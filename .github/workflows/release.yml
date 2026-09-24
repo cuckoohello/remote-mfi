@@ -121,14 +121,13 @@ jobs:
             runner: ubuntu-22.04-arm
             image: golang:1.23-alpine3.20
           - arch: arm64
-            libc: glibc226
-            runner: ubuntu-22.04-arm
-            image: arm64v8/debian:9-slim
+            libc: merlin
+            runner: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v7
-        if: matrix.libc == 'glibc'
+        if: matrix.libc == 'glibc' || matrix.libc == 'merlin'
         with:
           go-version: "1.23.x"
           cache: true
@@ -165,49 +164,53 @@ jobs:
             sh -ec 'apk add --no-cache build-base libusb-dev=1.0.27-r0 pkgconfig
               make build'
 
-      - name: Build glibc226 binary in Debian 9
-        if: matrix.libc == 'glibc226'
+      - name: Build merlin binary via am-toolchains cross compiler
+        if: matrix.libc == 'merlin'
         env:
-          BUILD_IMAGE: ${{ matrix.image }}
           TARGET_ARCH: ${{ matrix.arch }}
           TARGET_LIBC: ${{ matrix.libc }}
           VERSION: ${{ github.ref_name }}
           COMMIT: ${{ github.sha }}
+          TOOLCHAIN_SUBDIR: brcm-arm-hnd/crosstools-aarch64-gcc-5.5-linux-4.1-glibc-2.26-binutils-2.28.1
         run: |
           set -euo pipefail
-          docker run --rm \
-            -e VERSION -e COMMIT \
-            -e OUTPUT="dist/linux_${TARGET_ARCH}_${TARGET_LIBC}/remote-mfi-for-xcertplay" \
-            -e DEBIAN_FRONTEND=noninteractive \
-            -v "${GITHUB_WORKSPACE}:/src" \
-            -w /src \
-            "${BUILD_IMAGE}" \
-            bash -ec '
-              set -euo pipefail
-              # debian:9 (stretch) has moved to archive.debian.org.
-              rm -f /etc/apt/sources.list.d/*.list 2>/dev/null || true
-              printf "%s\n" \
-                "deb [check-valid-until=no] http://archive.debian.org/debian stretch main" \
-                "deb [check-valid-until=no] http://archive.debian.org/debian-security stretch/updates main" \
-                > /etc/apt/sources.list
-              apt-get -o Acquire::AllowInsecureRepositories=true \
-                      -o Acquire::AllowDowngradeToInsecureRepositories=true update
-              apt-get install -y --no-install-recommends --allow-unauthenticated \
-                ca-certificates curl xz-utils build-essential pkg-config libusb-1.0-0-dev binutils
-              curl -fsSL https://go.dev/dl/go1.23.1.linux-arm64.tar.gz -o /tmp/go.tar.gz
-              tar -C /usr/local -xzf /tmp/go.tar.gz
-              export PATH=/usr/local/go/bin:$PATH
-              go version
-              ldd --version | head -1
-              make build
-              # Confirm the produced binary needs no symbol newer than GLIBC_2.26.
-              # objdump -T lists dynamic symbols; pipefail-safe extraction.
-              objdump -T "${OUTPUT}" > /tmp/dt.txt || true
-              awk "{print \$5}" /tmp/dt.txt | grep -E "^GLIBC_[0-9]+\\.[0-9]+" | sort -u > /tmp/glibc-refs.txt || true
-              echo "GLIBC symbol references:"
-              cat /tmp/glibc-refs.txt
-              awk -F. "{ if (\$1 != \"GLIBC_2\" || \$2+0 > 26) { print \$0; exit 1 } }" /tmp/glibc-refs.txt
-            '
+          sudo apt-get update
+          # libusb-1.0-0-dev provides the header + libusb-1.0.pc; only used at
+          # link time to satisfy gousb's cgo -lusb-1.0. The runtime SONAME
+          # libusb-1.0.so.0 is supplied by the Merlin firmware itself.
+          sudo apt-get install -y --no-install-recommends libusb-1.0-0-dev pkg-config
+          # Sparse-clone the Asuswrt-Merlin aarch64 crosstools that match the
+          # firmware's Buildroot glibc 2.26 (HND 5.02L, kernel 4.1).
+          sudo mkdir -p /opt/am-toolchains
+          sudo chown "$(id -u):$(id -g)" /opt/am-toolchains
+          git clone --depth 1 --filter=blob:none --sparse \
+            https://github.com/RMerl/am-toolchains.git /opt/am-toolchains
+          git -C /opt/am-toolchains sparse-checkout set "${TOOLCHAIN_SUBDIR}"
+          TC="/opt/am-toolchains/${TOOLCHAIN_SUBDIR}"
+          "${TC}/bin/aarch64-buildroot-linux-gnu-gcc" --version | head -1
+          export CC="${TC}/bin/aarch64-buildroot-linux-gnu-gcc"
+          export CXX="${TC}/bin/aarch64-buildroot-linux-gnu-g++"
+          export AR="${TC}/bin/aarch64-buildroot-linux-gnu-ar"
+          export GOOS=linux
+          export GOARCH=arm64
+          export CGO_ENABLED=1
+          make build OUTPUT="dist/linux_${TARGET_ARCH}_${TARGET_LIBC}/remote-mfi-for-xcertplay"
+          # Confirm the binary needs no GLIBC symbol newer than 2.26.
+          OUT="dist/linux_${TARGET_ARCH}_${TARGET_LIBC}/remote-mfi-for-xcertplay"
+          "${TC}/bin/aarch64-buildroot-linux-gnu-objdump" -T "${OUT}" > /tmp/dt.txt
+          awk '{print $5}' /tmp/dt.txt | grep -E '^GLIBC_[0-9]+\.[0-9]+' | sort -u > /tmp/glibc-refs.txt || true
+          echo "GLIBC symbol references:"
+          cat /tmp/glibc-refs.txt
+          awk -F. '{ if ($1 != "GLIBC_2" || $2+0 > 26) { print $0; exit 1 } }' /tmp/glibc-refs.txt
+          # Confirm we do NOT link against libresolv.so.2, which Merlin firmware
+          # does not ship. netgo build tag keeps net/ off the cgo resolver path.
+          "${TC}/bin/aarch64-buildroot-linux-gnu-readelf" -d "${OUT}" > /tmp/dyn.txt
+          if grep -F 'libresolv.so.2' /tmp/dyn.txt; then
+            echo "unexpected dependency on libresolv.so.2" >&2
+            exit 1
+          fi
+          echo "NEEDED libraries:"
+          grep -E 'NEEDED' /tmp/dyn.txt
 
       - name: Package binary
         env:
@@ -217,9 +220,12 @@ jobs:
         run: |
           set -euo pipefail
           OUTPUT_DIR="dist/linux_${TARGET_ARCH}_${TARGET_LIBC}"
-          # Containerised build steps run as root, so hand ownership of the
-          # dist tree back to the runner user before writing the tarball.
-          sudo chown -R "$(id -u):$(id -g)" dist
+          # Some build steps run inside Docker as container root, so hand
+          # ownership of dist back to the runner user before writing the
+          # tarball. This is a no-op when dist is already runner-owned.
+          if [ -e dist ] && [ "$(stat -c '%u' dist)" != "$(id -u)" ]; then
+            sudo chown -R "$(id -u):$(id -g)" dist
+          fi
           cp README.md README.zh-CN.md LICENSE "${OUTPUT_DIR}/"
           ARCHIVE="remote-mfi-for-xcertplay_${VERSION}_linux_${TARGET_ARCH}_${TARGET_LIBC}.tar.gz"
           tar -C "${OUTPUT_DIR}" -czf "dist/${ARCHIVE}" remote-mfi-for-xcertplay README.md README.zh-CN.md LICENSE
@@ -270,5 +276,8 @@ jobs:
 
             - `linux_amd64_glibc`, `linux_arm64_glibc` — glibc ≥ 2.35 (Ubuntu 22.04 baseline).
             - `linux_amd64_musl`, `linux_arm64_musl` — Alpine 3.20 baseline.
-            - `linux_arm64_glibc226` — arm64 with glibc ≥ 2.26 for Asuswrt-Merlin routers
-              (e.g. RT-AX86U 388.x, Buildroot glibc 2.26).
+            - `linux_arm64_merlin` — cross-built with the official
+              Asuswrt-Merlin `am-toolchains` aarch64 crosstools (glibc 2.26).
+              Runs on RT-AX86U 388.x and other Merlin HND 5.02L routers;
+              dynamically links against the firmware-provided
+              `libusb-1.0.so.0`.

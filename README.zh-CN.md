@@ -10,7 +10,7 @@
 
 需要 Linux `amd64` 或 `arm64`、CH341/MFi 设备，以及对应 `/dev/bus/usb` 节点的读写权限。先用 `lsusb` 确认 VID:PID，默认值为 `1a86:5512`。
 
-从 [Releases](https://github.com/cuckoohello/remote-mfi-for-xcertplay/releases) 下载匹配 CPU 和 libc 的压缩包，用 `sha256sum -c` 校验配套 `.sha256` 文件后解压。产物为 `linux_{amd64,arm64}_{glibc,musl}` 四种组合，另加 `linux_arm64_glibc226`，用于 Asuswrt-Merlin 等 glibc ≥ 2.26 的老系统；默认 glibc 基线为 2.35，musl 使用 Alpine 3.20 构建。
+从 [Releases](https://github.com/cuckoohello/remote-mfi-for-xcertplay/releases) 下载匹配 CPU 和 libc 的压缩包，用 `sha256sum -c` 校验配套 `.sha256` 文件后解压。产物为 `linux_{amd64,arm64}_{glibc,musl}` 四种组合，另加 `linux_arm64_merlin`，专为 Asuswrt-Merlin HND 5.02L 路由器（如 RT-AX86U 388.x）交叉编译，使用官方 `am-toolchains` 的 glibc 2.26 工具链；默认 glibc 基线为 2.35，musl 使用 Alpine 3.20 构建。
 
 按发行版安装运行依赖：
 

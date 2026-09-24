@@ -10,7 +10,7 @@ Expose a physical MFi authentication coprocessor, connected through a CH341 USB-
 
 Requires Linux `amd64` or `arm64`, a CH341/MFi device, and read/write access to its `/dev/bus/usb` node. Verify the VID:PID with `lsusb`; the default is `1a86:5512`.
 
-Choose a binary from [Releases](https://github.com/cuckoohello/remote-mfi-for-xcertplay/releases) matching both CPU and libc, verify its accompanying `.sha256` file with `sha256sum -c`, and extract it. Available variants are `linux_{amd64,arm64}_{glibc,musl}` plus `linux_arm64_glibc226` for older glibc systems such as Asuswrt-Merlin routers (Buildroot glibc 2.26). The default glibc baseline is 2.35; musl builds use Alpine 3.20.
+Choose a binary from [Releases](https://github.com/cuckoohello/remote-mfi-for-xcertplay/releases) matching both CPU and libc, verify its accompanying `.sha256` file with `sha256sum -c`, and extract it. Available variants are `linux_{amd64,arm64}_{glibc,musl}` plus `linux_arm64_merlin` for Asuswrt-Merlin HND 5.02L routers (e.g. RT-AX86U 388.x, cross-built with the official `am-toolchains` glibc 2.26 crosstools). The default glibc baseline is 2.35; musl builds use Alpine 3.20.
 
 Install the runtime dependencies for your distribution:
 

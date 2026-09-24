@@ -97,7 +97,7 @@ curl -fsS -H "Authorization: Bearer $MFI_BEARER_TOKEN" \
 | Docker `linux/amd64`、`linux/arm64` | 对应原生 Linux 宿主机 |
 | glibc `amd64`、`arm64` | glibc ≥ 2.35，安装 libusb |
 | musl `amd64`、`arm64` | Alpine 3.20，安装 libusb |
-| glibc226 `arm64` | glibc ≥ 2.26 的 arm64（Asuswrt-Merlin RT-AX86U 388.x 等），libusb 已由固件提供 |
+| merlin `arm64` | Asuswrt-Merlin HND 5.02L 路由器（RT-AX86U 388.x 等），使用固件自带的 `libusb-1.0.so.0` |
 
 - [ ] 镜像 manifest 含两个架构；Release 含五个 tarball 和五份 SHA-256，全部校验通过。
 - [ ] tarball 内容为二进制、中英文 README、LICENSE；所有产物版本/commit 对应同一 tag。
