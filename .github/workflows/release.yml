@@ -178,14 +178,19 @@ jobs:
           # libusb-1.0-0-dev provides the header + libusb-1.0.pc; only used at
           # link time to satisfy gousb's cgo -lusb-1.0. The runtime SONAME
           # libusb-1.0.so.0 is supplied by the Merlin firmware itself.
-          # libmpc3 (Ubuntu jammy) provides libmpc.so.3, needed by the
-          # Buildroot 2017 cc1 binary shipped with am-toolchains.
-          sudo apt-get install -y --no-install-recommends libusb-1.0-0-dev pkg-config libmpc3
-          # Some Buildroot 2017 cc1 binaries in am-toolchains embed no RPATH and
-          # look up libmpc.so.3 in the default ld search path. Ubuntu 22.04
-          # installs libmpc.so.3 under /usr/lib/x86_64-linux-gnu/, so expose it
-          # explicitly through LD_LIBRARY_PATH.
-          export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
+          # The Buildroot 2017 host tools shipped with am-toolchains are
+          # 32-bit ELF binaries, so install the i386 runtime libraries
+          # (libmpc3, libmpfr6, libgmp10, libc6) alongside the amd64 pkg-config
+          # and libusb headers.
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libusb-1.0-0-dev pkg-config \
+            libc6:i386 libmpc3:i386 libmpfr6:i386 libgmp10:i386 zlib1g:i386
+          # Some Buildroot 2017 cc1 binaries in am-toolchains embed no RPATH
+          # and look up shared libraries in the default ld search path. The
+          # jammy i386 packages install into /lib/i386-linux-gnu.
+          export LD_LIBRARY_PATH="/lib/i386-linux-gnu:${LD_LIBRARY_PATH:-}"
           # Sparse-clone the Asuswrt-Merlin aarch64 crosstools that match the
           # firmware's Buildroot glibc 2.26 (HND 5.02L, kernel 4.1).
           sudo mkdir -p /opt/am-toolchains
