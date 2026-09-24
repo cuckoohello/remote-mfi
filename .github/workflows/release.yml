@@ -177,35 +177,33 @@ jobs:
           sudo apt-get update
           # The Buildroot 2017 host tools in am-toolchains are 32-bit ELF
           # binaries with old SONAME dependencies (libmpc.so.3, libmpfr.so.4),
-          # and the target binary is aarch64 with cgo. Enable both i386 (for
-          # cc1) and arm64 (for the target libusb) foreign architectures.
+          # and the target binary is aarch64 with cgo.
           sudo dpkg --add-architecture i386
-          sudo dpkg --add-architecture arm64
-          # Point apt at Ubuntu ports for arm64 packages; the main archive
-          # does not ship arm64 debs.
-          arm64_list=/etc/apt/sources.list.d/arm64-ports.list
-          codename=$(. /etc/os-release && echo "${VERSION_CODENAME}")
-          {
-            printf 'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports %s main universe\n' "$codename"
-            printf 'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports %s-updates main universe\n' "$codename"
-            printf 'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports %s-security main universe\n' "$codename"
-          } | sudo tee "$arm64_list" >/dev/null
-          # Restrict the default (amd64) archives so apt does not try to fetch
-          # arm64 packages from them, which would 404.
-          for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do
-            [ "$f" = "$arm64_list" ] && continue
-            sudo sed -i 's|^deb http|deb [arch=amd64,i386] http|; s|^deb https|deb [arch=amd64,i386] https|' "$f" || true
-          done
           sudo apt-get update
+          # Native (amd64) tools plus 32-bit runtime libraries for cc1.
           sudo apt-get install -y --no-install-recommends \
             pkg-config curl \
-            libc6:i386 zlib1g:i386 libgmp10:i386 \
-            libusb-1.0-0-dev:arm64
-          # Direct pkg-config at the arm64 sysroot only, so cgo picks up
-          # the aarch64 libusb.
-          export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig
-          export PKG_CONFIG_SYSROOT_DIR=/
-          export PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig
+            libc6:i386 zlib1g:i386 libgmp10:i386
+          # Fetch libusb-1.0 headers + arm64 library directly from ports.ubuntu.com.
+          # Trying to make apt install foreign-architecture packages here would
+          # need overriding the many pre-configured amd64-only sources; a
+          # targeted dpkg-deb extraction is simpler and hermetic.
+          MERLIN_ARM64_SYSROOT=/opt/merlin-arm64-sysroot
+          sudo mkdir -p "$MERLIN_ARM64_SYSROOT"
+          tmp=$(mktemp -d)
+          for url in \
+            "http://ports.ubuntu.com/ubuntu-ports/pool/main/libu/libusb-1.0/libusb-1.0-0_1.0.25-1ubuntu2_arm64.deb" \
+            "http://ports.ubuntu.com/ubuntu-ports/pool/main/libu/libusb-1.0/libusb-1.0-0-dev_1.0.25-1ubuntu2_arm64.deb" \
+          ; do
+            curl -fsSL -o "$tmp/$(basename "$url")" "$url"
+            (cd "$tmp" && dpkg-deb -x "$(basename "$url")" extracted && \
+              sudo cp -a extracted/. "$MERLIN_ARM64_SYSROOT/" && \
+              rm -rf extracted "$(basename "$url")")
+          done
+          rm -rf "$tmp"
+          # Point pkg-config at the isolated arm64 sysroot only.
+          export PKG_CONFIG_SYSROOT_DIR="$MERLIN_ARM64_SYSROOT"
+          export PKG_CONFIG_LIBDIR="$MERLIN_ARM64_SYSROOT/usr/lib/aarch64-linux-gnu/pkgconfig"
           # The Buildroot 2017 host tools in am-toolchains are 32-bit ELF
           # binaries that link against old SONAMEs (libmpc.so.3, libmpfr.so.4)
           # that jammy no longer ships. Pull the matching bionic .debs from
