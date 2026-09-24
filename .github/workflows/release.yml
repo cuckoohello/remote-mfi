@@ -138,17 +138,9 @@ jobs:
           COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
-          BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          OUTPUT_DIR="dist/linux_${TARGET_ARCH}_${TARGET_LIBC}"
-          mkdir -p "${OUTPUT_DIR}"
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libusb-1.0-0-dev pkg-config
-          CGO_ENABLED=1 go build -trimpath \
-            -ldflags="-s -w \
-              -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.Version=${VERSION} \
-              -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.Commit=${COMMIT} \
-              -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.BuildDate=${BUILD_DATE}" \
-            -o "${OUTPUT_DIR}/remote-mfi-for-xcertplay" ./cmd/remote-mfi-for-xcertplay
+          make build OUTPUT="dist/linux_${TARGET_ARCH}_${TARGET_LIBC}/remote-mfi-for-xcertplay"
 
       - name: Build musl binary natively
         if: matrix.libc == 'musl'
@@ -160,21 +152,14 @@ jobs:
           COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
-          BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          OUTPUT_DIR="dist/linux_${TARGET_ARCH}_${TARGET_LIBC}"
-          mkdir -p "${OUTPUT_DIR}"
           docker run --rm \
-            -e VERSION -e COMMIT -e BUILD_DATE \
+            -e VERSION -e COMMIT \
+            -e OUTPUT="dist/linux_${TARGET_ARCH}_${TARGET_LIBC}/remote-mfi-for-xcertplay" \
             -v "${GITHUB_WORKSPACE}:/src" \
             -w /src \
             "${BUILD_IMAGE}" \
-            sh -ec "apk add --no-cache build-base libusb-dev=1.0.27-r0 pkgconfig; \
-              CGO_ENABLED=1 go build -trimpath \
-              -ldflags='-s -w \
-                -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.Version=${VERSION} \
-                -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.Commit=${COMMIT} \
-                -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.BuildDate=${BUILD_DATE}' \
-              -o /src/${OUTPUT_DIR}/remote-mfi-for-xcertplay ./cmd/remote-mfi-for-xcertplay"
+            sh -ec 'apk add --no-cache build-base libusb-dev=1.0.27-r0 pkgconfig
+              make build'
 
       - name: Package binary
         env:

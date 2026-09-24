@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -14,6 +15,8 @@ import (
 
 	"github.com/cuckoohello/remote-mfi-for-xcertplay/internal/transport"
 )
+
+var errCertificateInjected = errors.New("injected certificate failure")
 
 func TestConcurrentSameRequestIDTriggersChipOnce(t *testing.T) {
 	driver := &fakeDriver{signDelay: 20 * time.Millisecond}
@@ -137,17 +140,49 @@ func TestRequestIDReuseWithDifferentChallengeIsRejected(t *testing.T) {
 	}
 }
 
-func TestCertificateIsNotCached(t *testing.T) {
+func TestCertificateIsCachedForProcessLifetime(t *testing.T) {
 	driver := &fakeDriver{certificate: []byte{1, 2, 3}}
 	service := newTestService(t, driver)
-	for range 2 {
-		result, err := service.Certificate(context.Background())
-		if err != nil {
-			t.Fatalf("Certificate: %v", err)
-		}
-		if result.ProtocolMajor != 3 || !bytes.Equal(result.Data, driver.certificate) {
-			t.Fatalf("unexpected certificate result: %+v", result)
-		}
+
+	first, err := service.Certificate(context.Background())
+	if err != nil {
+		t.Fatalf("first Certificate: %v", err)
+	}
+	if first.Cached {
+		t.Fatal("first Certificate reported cached=true")
+	}
+	if first.ProtocolMajor != 3 || !bytes.Equal(first.Data, driver.certificate) {
+		t.Fatalf("unexpected first certificate: %+v", first)
+	}
+
+	second, err := service.Certificate(context.Background())
+	if err != nil {
+		t.Fatalf("second Certificate: %v", err)
+	}
+	if !second.Cached {
+		t.Fatal("second Certificate should hit the process-lifetime cache")
+	}
+	if !bytes.Equal(first.Data, second.Data) || first.ProtocolMajor != second.ProtocolMajor {
+		t.Fatal("cached certificate differs from the first read")
+	}
+	if got := driver.certificateCalls.Load(); got != 1 {
+		t.Fatalf("certificate calls = %d, want 1", got)
+	}
+}
+
+func TestCertificateErrorsAreNotCached(t *testing.T) {
+	driver := &fakeDriver{certificateErrors: 1, certificate: []byte{4, 5}}
+	service := newTestService(t, driver)
+
+	if _, err := service.Certificate(context.Background()); err == nil {
+		t.Fatal("expected first Certificate to fail")
+	}
+	result, err := service.Certificate(context.Background())
+	if err != nil {
+		t.Fatalf("second Certificate: %v", err)
+	}
+	if result.Cached {
+		t.Fatal("recovered certificate should not report cached=true")
 	}
 	if got := driver.certificateCalls.Load(); got != 2 {
 		t.Fatalf("certificate calls = %d, want 2", got)
@@ -181,8 +216,9 @@ func newTestService(t *testing.T, driver *fakeDriver) *Service {
 }
 
 type fakeDriver struct {
-	signDelay   time.Duration
-	certificate []byte
+	signDelay         time.Duration
+	certificate       []byte
+	certificateErrors int32
 
 	signCalls        atomic.Int32
 	certificateCalls atomic.Int32
@@ -196,6 +232,10 @@ func (d *fakeDriver) ProtocolMajor(context.Context) (uint8, error) {
 
 func (d *fakeDriver) ReadCertificate(context.Context) ([]byte, error) {
 	d.certificateCalls.Add(1)
+	if d.certificateErrors > 0 {
+		d.certificateErrors--
+		return nil, errCertificateInjected
+	}
 	if d.certificate == nil {
 		return []byte{1, 2, 3}, nil
 	}

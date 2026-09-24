@@ -45,12 +45,7 @@ jobs:
 
       - name: Build
         run: |
-          CGO_ENABLED=1 go build -trimpath \
-            -ldflags="-s -w \
-              -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.Version=ci \
-              -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.Commit=${GITHUB_SHA} \
-              -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -o remote-mfi-for-xcertplay ./cmd/remote-mfi-for-xcertplay
+          make build VERSION=ci COMMIT="$GITHUB_SHA"
           ./remote-mfi-for-xcertplay --version
 
       - uses: actions/upload-artifact@v7
@@ -112,11 +107,6 @@ jobs:
 
       - name: Build dynamically linked glibc binary
         run: |
-          CGO_ENABLED=1 go build -trimpath \
-            -ldflags="-s -w \
-              -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.Version=ci \
-              -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.Commit=${GITHUB_SHA} \
-              -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -o remote-mfi-for-xcertplay ./cmd/remote-mfi-for-xcertplay
+          make build VERSION=ci COMMIT="$GITHUB_SHA"
           file remote-mfi-for-xcertplay
           ldd remote-mfi-for-xcertplay | grep -F libusb-1.0.so.0

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -36,6 +37,7 @@ type ChipDriver interface {
 type Certificate struct {
 	ProtocolMajor uint8
 	Data          []byte
+	Cached        bool
 	WaitDuration  time.Duration
 	ChipDuration  time.Duration
 }
@@ -61,10 +63,11 @@ type RuntimeStatus struct {
 }
 
 type Service struct {
-	driver    ChipDriver
-	inspector transport.USBInspector
-	gate      *chipGate
-	cache     *signatureCache
+	driver      ChipDriver
+	inspector   transport.USBInspector
+	gate        *chipGate
+	cache       *signatureCache
+	certificate atomic.Pointer[Certificate]
 }
 
 func NewService(driver ChipDriver, inspector transport.USBInspector) (*Service, error) {
@@ -83,11 +86,28 @@ func NewService(driver ChipDriver, inspector transport.USBInspector) (*Service, 
 }
 
 func (s *Service) Certificate(ctx context.Context) (Certificate, error) {
+	if cached := s.certificate.Load(); cached != nil {
+		return Certificate{
+			ProtocolMajor: cached.ProtocolMajor,
+			Data:          append([]byte(nil), cached.Data...),
+			Cached:        true,
+		}, nil
+	}
+
 	release, waitDuration, err := s.gate.acquire(ctx, "certificate", chipWaitDeadline)
 	if err != nil {
 		return Certificate{}, err
 	}
 	defer release()
+
+	if cached := s.certificate.Load(); cached != nil {
+		return Certificate{
+			ProtocolMajor: cached.ProtocolMajor,
+			Data:          append([]byte(nil), cached.Data...),
+			Cached:        true,
+			WaitDuration:  waitDuration,
+		}, nil
+	}
 
 	chipStarted := time.Now()
 	hardwareContext := context.WithoutCancel(ctx)
@@ -99,9 +119,14 @@ func (s *Service) Certificate(ctx context.Context) (Certificate, error) {
 	if err != nil {
 		return Certificate{}, normalizeHardwareError(err)
 	}
-	return Certificate{
+	stored := &Certificate{
 		ProtocolMajor: protocolMajor,
 		Data:          append([]byte(nil), certificate...),
+	}
+	s.certificate.Store(stored)
+	return Certificate{
+		ProtocolMajor: stored.ProtocolMajor,
+		Data:          append([]byte(nil), stored.Data...),
 		WaitDuration:  waitDuration,
 		ChipDuration:  time.Since(chipStarted),
 	}, nil

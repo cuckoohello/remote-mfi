@@ -1,4 +1,5 @@
 GO ?= go
+OUTPUT ?= remote-mfi-for-xcertplay
 VERSION ?= dev
 COMMIT ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -12,7 +13,8 @@ LDFLAGS := -s -w \
 all: check build
 
 build:
-	CGO_ENABLED=1 $(GO) build -trimpath -ldflags="$(LDFLAGS)" -o remote-mfi-for-xcertplay ./cmd/remote-mfi-for-xcertplay
+	mkdir -p "$(dir $(OUTPUT))"
+	CGO_ENABLED=1 $(GO) build -trimpath -ldflags="$(LDFLAGS)" -o "$(OUTPUT)" ./cmd/remote-mfi-for-xcertplay
 
 test:
 	$(GO) test ./...

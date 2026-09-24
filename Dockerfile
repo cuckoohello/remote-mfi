@@ -16,14 +16,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=1 go build \
-    -trimpath \
-    -ldflags="-s -w \
-      -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.Version=${VERSION} \
-      -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.Commit=${COMMIT} \
-      -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.BuildDate=${BUILD_DATE}" \
-    -o /out/remote-mfi-for-xcertplay \
-    ./cmd/remote-mfi-for-xcertplay
+RUN make build OUTPUT=/out/remote-mfi-for-xcertplay
 
 FROM alpine:3.20
 
@@ -42,13 +35,10 @@ LABEL org.opencontainers.image.title="remote-mfi-for-xcertplay" \
 RUN apk add --no-cache \
       ca-certificates \
       libusb=1.0.27-r0 \
-      tzdata \
-    && addgroup -S -g 10001 mfi \
-    && adduser -S -D -H -u 10001 -G mfi -s /sbin/nologin mfi
+      tzdata
 
 COPY --from=build /out/remote-mfi-for-xcertplay /usr/local/bin/remote-mfi-for-xcertplay
 
-USER mfi
 EXPOSE 8080
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \

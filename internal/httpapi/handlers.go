@@ -42,7 +42,11 @@ func (s *Server) handleCertificate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	state := stateFrom(r)
-	state.note = "chip"
+	if certificate.Cached {
+		state.note = "idempotent-hit"
+	} else {
+		state.note = "chip"
+	}
 	state.chipWait = certificate.WaitDuration
 	state.chipTime = certificate.ChipDuration
 	digest := sha256.Sum256(certificate.Data)
