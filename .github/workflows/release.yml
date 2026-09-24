@@ -217,6 +217,9 @@ jobs:
         run: |
           set -euo pipefail
           OUTPUT_DIR="dist/linux_${TARGET_ARCH}_${TARGET_LIBC}"
+          # Containerised build steps run as root, so hand ownership of
+          # the workspace outputs back to the runner user before packaging.
+          sudo chown -R "$(id -u):$(id -g)" "${OUTPUT_DIR}"
           cp README.md README.zh-CN.md LICENSE "${OUTPUT_DIR}/"
           ARCHIVE="remote-mfi-for-xcertplay_${VERSION}_linux_${TARGET_ARCH}_${TARGET_LIBC}.tar.gz"
           tar -C "${OUTPUT_DIR}" -czf "dist/${ARCHIVE}" remote-mfi-for-xcertplay README.md README.zh-CN.md LICENSE
