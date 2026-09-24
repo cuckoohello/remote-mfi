@@ -178,19 +178,31 @@ jobs:
           # libusb-1.0-0-dev provides the header + libusb-1.0.pc; only used at
           # link time to satisfy gousb's cgo -lusb-1.0. The runtime SONAME
           # libusb-1.0.so.0 is supplied by the Merlin firmware itself.
-          # The Buildroot 2017 host tools shipped with am-toolchains are
-          # 32-bit ELF binaries, so install the i386 runtime libraries
-          # (libmpc3, libmpfr6, libgmp10, libc6) alongside the amd64 pkg-config
-          # and libusb headers.
           sudo dpkg --add-architecture i386
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libusb-1.0-0-dev pkg-config \
-            libc6:i386 libmpc3:i386 libmpfr6:i386 libgmp10:i386 zlib1g:i386
-          # Some Buildroot 2017 cc1 binaries in am-toolchains embed no RPATH
-          # and look up shared libraries in the default ld search path. The
-          # jammy i386 packages install into /lib/i386-linux-gnu.
-          export LD_LIBRARY_PATH="/lib/i386-linux-gnu:${LD_LIBRARY_PATH:-}"
+            libusb-1.0-0-dev pkg-config curl \
+            libc6:i386 zlib1g:i386
+          # The Buildroot 2017 host tools in am-toolchains are 32-bit ELF
+          # binaries that link against old SONAMEs (libmpc.so.3, libmpfr.so.4)
+          # that jammy no longer ships. Pull the matching bionic .debs from
+          # Ubuntu's old-releases archive into /usr/local/lib/i386-linux-gnu
+          # so cc1 can dlopen them without polluting the system linker cache.
+          MERLIN_LIB_DIR=/usr/local/lib/i386-linux-gnu-merlin
+          sudo mkdir -p "$MERLIN_LIB_DIR"
+          tmp=$(mktemp -d)
+          for url in \
+            "http://old-releases.ubuntu.com/ubuntu/pool/main/m/mpfr4/libmpfr4_3.1.6-1_i386.deb" \
+            "http://old-releases.ubuntu.com/ubuntu/pool/main/m/mpclib3/libmpc3_1.1.0-1_i386.deb" \
+          ; do
+            curl -fsSL -o "$tmp/$(basename "$url")" "$url"
+            (cd "$tmp" && dpkg-deb -x "$(basename "$url")" extracted && \
+              sudo cp -a extracted/usr/lib/i386-linux-gnu/. "$MERLIN_LIB_DIR/" && \
+              rm -rf extracted "$(basename "$url")")
+          done
+          rm -rf "$tmp"
+          ls "$MERLIN_LIB_DIR"
+          export LD_LIBRARY_PATH="$MERLIN_LIB_DIR:${LD_LIBRARY_PATH:-}"
           # Sparse-clone the Asuswrt-Merlin aarch64 crosstools that match the
           # firmware's Buildroot glibc 2.26 (HND 5.02L, kernel 4.1).
           sudo mkdir -p /opt/am-toolchains
@@ -199,6 +211,15 @@ jobs:
             https://github.com/RMerl/am-toolchains.git /opt/am-toolchains
           git -C /opt/am-toolchains sparse-checkout set "${TOOLCHAIN_SUBDIR}"
           TC="/opt/am-toolchains/${TOOLCHAIN_SUBDIR}"
+          # Report the shared library dependencies of cc1 so unexpected
+          # missing SONAMEs surface loudly instead of causing a `make build`
+          # trailing failure.
+          cc1_bin="${TC}/libexec/gcc/aarch64-buildroot-linux-gnu/5.5.0/cc1"
+          file "$cc1_bin"
+          if ! LD_LIBRARY_PATH="$LD_LIBRARY_PATH" ldd "$cc1_bin"; then
+            echo "cc1 ldd failed; check the trailing errors above" >&2
+            exit 1
+          fi
           "${TC}/bin/aarch64-buildroot-linux-gnu-gcc" --version | head -1
           export CC="${TC}/bin/aarch64-buildroot-linux-gnu-gcc"
           export CXX="${TC}/bin/aarch64-buildroot-linux-gnu-g++"
