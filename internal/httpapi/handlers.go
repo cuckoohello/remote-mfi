@@ -1,13 +1,12 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -49,12 +48,11 @@ func (s *Server) handleCertificate(w http.ResponseWriter, r *http.Request) {
 	}
 	state.chipWait = certificate.WaitDuration
 	state.chipTime = certificate.ChipDuration
-	digest := sha256.Sum256(certificate.Data)
 	writeJSON(w, http.StatusOK, certificateResponse{
 		Type:              "mfi",
 		ProtocolMajor:     int(certificate.ProtocolMajor),
-		Certificate:       base64.StdEncoding.EncodeToString(certificate.Data),
-		CertificateSHA256: hex.EncodeToString(digest[:]),
+		Certificate:       certificate.Base64,
+		CertificateSHA256: certificate.SHA256Hex,
 	})
 }
 
@@ -107,13 +105,8 @@ func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
-	var body map[string]json.RawMessage
-	if err := decodeJSON(w, r, &body); err != nil {
-		stateFrom(r).note = "bad request"
-		writeJSON(w, http.StatusBadRequest, map[string]string{"detail": "invalid request body"})
-		return
-	}
-	if body == nil || len(body) != 0 {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumRequestBodyBytes))
+	if err != nil || !bytes.Equal(bytes.TrimSpace(body), []byte("{}")) {
 		stateFrom(r).note = "bad request"
 		writeJSON(w, http.StatusBadRequest, map[string]string{"detail": "body must be {}"})
 		return
@@ -181,7 +174,16 @@ func (s *Server) handleDebug(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 	status, detail, note := serviceErrorResponse(err)
-	stateFrom(r).note = note
+	state := stateFrom(r)
+	state.note = note
+	s.logger.Error(
+		"service_error",
+		"path", r.URL.Path,
+		"status", status,
+		"note", note,
+		"request_id", state.requestID,
+		"err", err.Error(),
+	)
 	writeJSON(w, status, map[string]string{"detail": detail})
 }
 

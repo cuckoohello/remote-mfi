@@ -79,7 +79,6 @@ func run() error {
 
 	appContext, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-	go service.RunCacheGC(appContext)
 	go probeChip(appContext, logger, service)
 
 	serverError := make(chan error, 1)

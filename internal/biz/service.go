@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -17,7 +19,6 @@ import (
 const (
 	chipWaitDeadline = 8 * time.Second
 	cacheTTL         = 60 * time.Second
-	cacheGCInterval  = 15 * time.Second
 )
 
 var (
@@ -35,11 +36,13 @@ type ChipDriver interface {
 }
 
 type Certificate struct {
-	ProtocolMajor uint8
-	Data          []byte
-	Cached        bool
-	WaitDuration  time.Duration
-	ChipDuration  time.Duration
+	ProtocolMajor    uint8
+	Data             []byte
+	Base64           string
+	SHA256Hex        string
+	Cached           bool
+	WaitDuration     time.Duration
+	ChipDuration     time.Duration
 }
 
 type SignResult struct {
@@ -87,11 +90,9 @@ func NewService(driver ChipDriver, inspector transport.USBInspector) (*Service, 
 
 func (s *Service) Certificate(ctx context.Context) (Certificate, error) {
 	if cached := s.certificate.Load(); cached != nil {
-		return Certificate{
-			ProtocolMajor: cached.ProtocolMajor,
-			Data:          append([]byte(nil), cached.Data...),
-			Cached:        true,
-		}, nil
+		hit := *cached
+		hit.Cached = true
+		return hit, nil
 	}
 
 	release, waitDuration, err := s.gate.acquire(ctx, "certificate", chipWaitDeadline)
@@ -101,12 +102,10 @@ func (s *Service) Certificate(ctx context.Context) (Certificate, error) {
 	defer release()
 
 	if cached := s.certificate.Load(); cached != nil {
-		return Certificate{
-			ProtocolMajor: cached.ProtocolMajor,
-			Data:          append([]byte(nil), cached.Data...),
-			Cached:        true,
-			WaitDuration:  waitDuration,
-		}, nil
+		hit := *cached
+		hit.Cached = true
+		hit.WaitDuration = waitDuration
+		return hit, nil
 	}
 
 	chipStarted := time.Now()
@@ -115,21 +114,23 @@ func (s *Service) Certificate(ctx context.Context) (Certificate, error) {
 	if err != nil {
 		return Certificate{}, normalizeHardwareError(err)
 	}
-	certificate, err := s.driver.ReadCertificate(hardwareContext)
+	data, err := s.driver.ReadCertificate(hardwareContext)
 	if err != nil {
 		return Certificate{}, normalizeHardwareError(err)
 	}
 	stored := &Certificate{
 		ProtocolMajor: protocolMajor,
-		Data:          append([]byte(nil), certificate...),
+		Data:          append([]byte(nil), data...),
 	}
+	stored.Base64 = base64.StdEncoding.EncodeToString(stored.Data)
+	digest := sha256.Sum256(stored.Data)
+	stored.SHA256Hex = hex.EncodeToString(digest[:])
 	s.certificate.Store(stored)
-	return Certificate{
-		ProtocolMajor: stored.ProtocolMajor,
-		Data:          append([]byte(nil), stored.Data...),
-		WaitDuration:  waitDuration,
-		ChipDuration:  time.Since(chipStarted),
-	}, nil
+
+	fresh := *stored
+	fresh.WaitDuration = waitDuration
+	fresh.ChipDuration = time.Since(chipStarted)
+	return fresh, nil
 }
 
 func (s *Service) Sign(ctx context.Context, requestID string, challenge []byte) (SignResult, error) {
@@ -166,7 +167,7 @@ func (s *Service) Sign(ctx context.Context, requestID string, challenge []byte) 
 	}
 	s.cache.put(requestID, entry)
 	return SignResult{
-		Signature:    append([]byte(nil), signature...),
+		Signature:    entry.signature,
 		WaitDuration: waitDuration,
 		ChipDuration: time.Since(chipStarted),
 	}, nil
@@ -215,25 +216,12 @@ func (s *Service) Runtime() RuntimeStatus {
 	}
 }
 
-func (s *Service) RunCacheGC(ctx context.Context) {
-	ticker := time.NewTicker(cacheGCInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			s.cache.deleteExpired(time.Now())
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
 func cachedResult(entry signatureEntry, digest [sha256.Size]byte) (SignResult, error) {
 	if entry.challengeDigest != digest {
 		return SignResult{}, ErrRequestIDReuse
 	}
 	return SignResult{
-		Signature: append([]byte(nil), entry.signature...),
+		Signature: entry.signature,
 		Cached:    true,
 	}, nil
 }
@@ -278,9 +266,9 @@ func (g *chipGate) acquire(ctx context.Context, holder string, timeout time.Dura
 			<-g.token
 		}, time.Since(started), nil
 	case <-timer.C:
-		return nil, time.Since(started), ErrChipBusy
+		return func() {}, time.Since(started), ErrChipBusy
 	case <-ctx.Done():
-		return nil, time.Since(started), ctx.Err()
+		return func() {}, time.Since(started), ctx.Err()
 	}
 }
 
@@ -302,7 +290,7 @@ type signatureEntry struct {
 type signatureCache struct {
 	ttl time.Duration
 
-	mu      sync.RWMutex
+	mu      sync.Mutex
 	entries map[string]signatureEntry
 }
 
@@ -314,13 +302,16 @@ func newSignatureCache(ttl time.Duration) *signatureCache {
 }
 
 func (c *signatureCache) get(requestID string) (signatureEntry, bool) {
-	c.mu.RLock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	entry, ok := c.entries[requestID]
-	c.mu.RUnlock()
-	if !ok || time.Now().After(entry.expiresAt) {
+	if !ok {
 		return signatureEntry{}, false
 	}
-	entry.signature = append([]byte(nil), entry.signature...)
+	if time.Now().After(entry.expiresAt) {
+		delete(c.entries, requestID)
+		return signatureEntry{}, false
+	}
 	return entry, true
 }
 
@@ -330,18 +321,8 @@ func (c *signatureCache) put(requestID string, entry signatureEntry) {
 	c.mu.Unlock()
 }
 
-func (c *signatureCache) deleteExpired(now time.Time) {
-	c.mu.Lock()
-	for requestID, entry := range c.entries {
-		if !now.Before(entry.expiresAt) {
-			delete(c.entries, requestID)
-		}
-	}
-	c.mu.Unlock()
-}
-
 func (c *signatureCache) len() int {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return len(c.entries)
 }

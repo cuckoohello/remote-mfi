@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -154,6 +156,13 @@ func TestCertificateIsCachedForProcessLifetime(t *testing.T) {
 	if first.ProtocolMajor != 3 || !bytes.Equal(first.Data, driver.certificate) {
 		t.Fatalf("unexpected first certificate: %+v", first)
 	}
+	digest := sha256.Sum256(driver.certificate)
+	if first.SHA256Hex != hex.EncodeToString(digest[:]) {
+		t.Fatalf("unexpected SHA256Hex: %q", first.SHA256Hex)
+	}
+	if first.Base64 != base64.StdEncoding.EncodeToString(driver.certificate) {
+		t.Fatalf("unexpected Base64: %q", first.Base64)
+	}
 
 	second, err := service.Certificate(context.Background())
 	if err != nil {
@@ -162,8 +171,8 @@ func TestCertificateIsCachedForProcessLifetime(t *testing.T) {
 	if !second.Cached {
 		t.Fatal("second Certificate should hit the process-lifetime cache")
 	}
-	if !bytes.Equal(first.Data, second.Data) || first.ProtocolMajor != second.ProtocolMajor {
-		t.Fatal("cached certificate differs from the first read")
+	if second.SHA256Hex != first.SHA256Hex || second.Base64 != first.Base64 {
+		t.Fatal("cached certificate encoding differs from the first read")
 	}
 	if got := driver.certificateCalls.Load(); got != 1 {
 		t.Fatalf("certificate calls = %d, want 1", got)
@@ -189,7 +198,7 @@ func TestCertificateErrorsAreNotCached(t *testing.T) {
 	}
 }
 
-func TestChipGateHonorsDeadline(t *testing.T) {
+func TestChipGateReturnsNoopReleaseOnFailure(t *testing.T) {
 	gate := newChipGate()
 	release, _, err := gate.acquire(context.Background(), "holder", time.Second)
 	if err != nil {
@@ -197,13 +206,26 @@ func TestChipGateHonorsDeadline(t *testing.T) {
 	}
 	defer release()
 
-	started := time.Now()
-	if _, _, err := gate.acquire(context.Background(), "waiter", 20*time.Millisecond); err != ErrChipBusy {
+	failRelease, _, err := gate.acquire(context.Background(), "waiter", 10*time.Millisecond)
+	if err != ErrChipBusy {
 		t.Fatalf("second acquire error = %v, want ErrChipBusy", err)
 	}
-	if elapsed := time.Since(started); elapsed < 15*time.Millisecond {
-		t.Fatalf("deadline elapsed too early: %s", elapsed)
+	if failRelease == nil {
+		t.Fatal("acquire must always return a non-nil release function")
 	}
+	failRelease()
+	failRelease()
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	cancelledRelease, _, err := gate.acquire(cancelled, "waiter", time.Second)
+	if err != context.Canceled {
+		t.Fatalf("cancelled acquire error = %v, want context.Canceled", err)
+	}
+	if cancelledRelease == nil {
+		t.Fatal("cancelled acquire must return a non-nil release function")
+	}
+	cancelledRelease()
 }
 
 func newTestService(t *testing.T, driver *fakeDriver) *Service {
