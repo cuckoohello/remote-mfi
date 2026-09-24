@@ -178,13 +178,14 @@ jobs:
           # libusb-1.0-0-dev provides the header + libusb-1.0.pc; only used at
           # link time to satisfy gousb's cgo -lusb-1.0. The runtime SONAME
           # libusb-1.0.so.0 is supplied by the Merlin firmware itself.
-          # libmpc3 from Ubuntu 20.04 (focal) provides libmpc.so.3, which the
-          # 2017 Buildroot cc1 binary in am-toolchains links against; jammy
-          # ships libmpc.so.6 only.
-          sudo apt-get install -y --no-install-recommends libusb-1.0-0-dev pkg-config
-          curl -fsSL -o /tmp/libmpc3.deb \
-            "http://archive.ubuntu.com/ubuntu/pool/main/m/mpclib3/libmpc3_1.1.0-1_amd64.deb"
-          sudo dpkg -i /tmp/libmpc3.deb
+          # libmpc3 (Ubuntu jammy) provides libmpc.so.3, needed by the
+          # Buildroot 2017 cc1 binary shipped with am-toolchains.
+          sudo apt-get install -y --no-install-recommends libusb-1.0-0-dev pkg-config libmpc3
+          # Some Buildroot 2017 cc1 binaries in am-toolchains embed no RPATH and
+          # look up libmpc.so.3 in the default ld search path. Ubuntu 22.04
+          # installs libmpc.so.3 under /usr/lib/x86_64-linux-gnu/, so expose it
+          # explicitly through LD_LIBRARY_PATH.
+          export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
           # Sparse-clone the Asuswrt-Merlin aarch64 crosstools that match the
           # firmware's Buildroot glibc 2.26 (HND 5.02L, kernel 4.1).
           sudo mkdir -p /opt/am-toolchains
