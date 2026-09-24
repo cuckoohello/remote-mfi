@@ -14,7 +14,7 @@ all: check build
 
 build:
 	mkdir -p "$(dir $(OUTPUT))"
-	CGO_ENABLED=1 $(GO) build -trimpath -ldflags="$(LDFLAGS)" -o "$(OUTPUT)" ./cmd/remote-mfi-for-xcertplay
+	CGO_ENABLED=1 $(GO) build -trimpath -tags netgo -ldflags="$(LDFLAGS)" -o "$(OUTPUT)" ./cmd/remote-mfi-for-xcertplay
 
 fmt:
 	@out=$$(gofmt -l ./cmd ./internal); \
