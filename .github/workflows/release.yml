@@ -184,26 +184,6 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             pkg-config curl \
             libc6:i386 zlib1g:i386 libgmp10:i386
-          # Fetch libusb-1.0 headers + arm64 library directly from ports.ubuntu.com.
-          # Trying to make apt install foreign-architecture packages here would
-          # need overriding the many pre-configured amd64-only sources; a
-          # targeted dpkg-deb extraction is simpler and hermetic.
-          MERLIN_ARM64_SYSROOT=/opt/merlin-arm64-sysroot
-          sudo mkdir -p "$MERLIN_ARM64_SYSROOT"
-          tmp=$(mktemp -d)
-          for url in \
-            "http://ports.ubuntu.com/ubuntu-ports/pool/main/libu/libusb-1.0/libusb-1.0-0_1.0.25-1ubuntu2_arm64.deb" \
-            "http://ports.ubuntu.com/ubuntu-ports/pool/main/libu/libusb-1.0/libusb-1.0-0-dev_1.0.25-1ubuntu2_arm64.deb" \
-          ; do
-            curl -fsSL -o "$tmp/$(basename "$url")" "$url"
-            (cd "$tmp" && dpkg-deb -x "$(basename "$url")" extracted && \
-              sudo cp -a extracted/. "$MERLIN_ARM64_SYSROOT/" && \
-              rm -rf extracted "$(basename "$url")")
-          done
-          rm -rf "$tmp"
-          # Point pkg-config at the isolated arm64 sysroot only.
-          export PKG_CONFIG_SYSROOT_DIR="$MERLIN_ARM64_SYSROOT"
-          export PKG_CONFIG_LIBDIR="$MERLIN_ARM64_SYSROOT/usr/lib/aarch64-linux-gnu/pkgconfig"
           # The Buildroot 2017 host tools in am-toolchains are 32-bit ELF
           # binaries that link against old SONAMEs (libmpc.so.3, libmpfr.so.4)
           # that jammy no longer ships. Pull the matching bionic .debs from
@@ -248,6 +228,29 @@ jobs:
           export GOOS=linux
           export GOARCH=arm64
           export CGO_ENABLED=1
+          # Cross-build libusb 1.0.24 (matches Merlin 388.x firmware) so cgo
+          # has an aarch64 -lusb-1.0 that only depends on libc + libpthread
+          # (no libudev, no glibc 2.34+ symbols). The runtime SONAME
+          # libusb-1.0.so.0 is supplied by the router itself.
+          LIBUSB_PREFIX=/opt/libusb-merlin
+          if [ ! -e "$LIBUSB_PREFIX/lib/libusb-1.0.so" ]; then
+            mkdir -p /tmp/libusb-src
+            curl -fsSL -o /tmp/libusb-src.tar.bz2 \
+              https://github.com/libusb/libusb/releases/download/v1.0.24/libusb-1.0.24.tar.bz2
+            tar -xjf /tmp/libusb-src.tar.bz2 -C /tmp/libusb-src --strip-components=1
+            (
+              cd /tmp/libusb-src
+              ./configure \
+                --host=aarch64-buildroot-linux-gnu \
+                --prefix="$LIBUSB_PREFIX" \
+                --disable-udev --disable-static
+              make -j"$(nproc)"
+              sudo make install
+            )
+          fi
+          export PKG_CONFIG_PATH="$LIBUSB_PREFIX/lib/pkgconfig"
+          export PKG_CONFIG_LIBDIR="$LIBUSB_PREFIX/lib/pkgconfig"
+          unset PKG_CONFIG_SYSROOT_DIR
           make build OUTPUT="dist/linux_${TARGET_ARCH}_${TARGET_LIBC}/remote-mfi-for-xcertplay"
           # Confirm the binary needs no GLIBC symbol newer than 2.26.
           OUT="dist/linux_${TARGET_ARCH}_${TARGET_LIBC}/remote-mfi-for-xcertplay"
