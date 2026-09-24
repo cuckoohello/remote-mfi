@@ -36,13 +36,13 @@ type ChipDriver interface {
 }
 
 type Certificate struct {
-	ProtocolMajor    uint8
-	Data             []byte
-	Base64           string
-	SHA256Hex        string
-	Cached           bool
-	WaitDuration     time.Duration
-	ChipDuration     time.Duration
+	ProtocolMajor uint8
+	Data          []byte
+	Base64        string
+	SHA256Hex     string
+	Cached        bool
+	WaitDuration  time.Duration
+	ChipDuration  time.Duration
 }
 
 type SignResult struct {
