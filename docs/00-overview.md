@@ -101,4 +101,5 @@
   - **v5.3** — **多形态多架构交付**:公开 GitHub 仓库 + GHCR multi-arch 镜像(amd64/arm64) + GitHub Releases 宿主机 binary(4 变体: amd64/arm64 × glibc/musl);libusb 动态链接;宿主机形态**仅交付 binary**,用户自行装依赖 / 配 udev / 起 systemd
 - 变更矩阵: 见 [04-runbook.md#变更矩阵](./04-runbook.md#5-变更矩阵)
 - 验收基准: 见 [05-acceptance-checklist.md](./05-acceptance-checklist.md)
-- 遗留问题: 见 [06-open-questions.md](./06-open-questions.md) (第二轮交付, 本轮不写)
+- 架构骨架: 见 [03-architecture.md](./03-architecture.md)
+- 遗留问题: 见 [06-open-questions.md](./06-open-questions.md)
