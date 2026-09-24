@@ -86,7 +86,7 @@ docker logs --tail 100 remote-mfi-for-xcertplay
 
 ## 宿主机二进制
 
-用 `uname -m` 和 `ldd --version` 确认 CPU/libc。glibc 产物基于 Ubuntu 22.04，要求 glibc ≥ 2.35；musl 产物基于 Alpine 3.20，不承诺更旧版本兼容。安装 `libusb-1.0` 与时区依赖的方法见 [README](../README.zh-CN.md#快速开始)。
+用 `uname -m` 和 `ldd --version` 确认 CPU/libc。glibc 产物基于 Ubuntu 22.04，要求 glibc ≥ 2.35；musl 产物基于 Alpine 3.20，不承诺更旧版本兼容。若目标机器 glibc 版本较旧（例如 Asuswrt-Merlin 388.x 使用 Buildroot glibc 2.26），使用专门的 `linux_arm64_glibc226` 产物；它在 Debian 9 (stretch) 中构建，仅使用 GLIBC_2.26 及更旧符号。安装 `libusb-1.0` 与时区依赖的方法见 [README](../README.zh-CN.md#快速开始)。
 
 以下以 `amd64/glibc` 为例，替换版本和平台后下载：
 
@@ -143,6 +143,34 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now remote-mfi-for-xcertplay
 sudo journalctl -u remote-mfi-for-xcertplay -f
 ```
+
+## Asuswrt-Merlin 路由器
+
+以 RT-AX86U (`arm64`, Buildroot glibc 2.26, `/usr/lib/libusb-1.0.so.0` 已随固件提供) 为例。根分区只读，只有 `/jffs` 可持久化：
+
+```sh
+mkdir -p /jffs/opt/remote-mfi
+cd /jffs/opt/remote-mfi
+VERSION=v0.2.0
+ARCHIVE="remote-mfi-for-xcertplay_${VERSION}_linux_arm64_glibc226.tar.gz"
+RELEASE_URL="https://github.com/cuckoohello/remote-mfi-for-xcertplay/releases/download/${VERSION}"
+curl -fLO "${RELEASE_URL}/${ARCHIVE}"
+curl -fLO "${RELEASE_URL}/${ARCHIVE}.sha256"
+sha256sum -c "${ARCHIVE}.sha256"
+tar xzf "$ARCHIVE"
+./remote-mfi-for-xcertplay --version
+ldd ./remote-mfi-for-xcertplay | grep libusb-1.0.so.0
+```
+
+前台运行验证；无 systemd 时可用 Merlin 内置的 `/jffs/scripts/services-start` 自启（不在此赘述）：
+
+```sh
+export MFI_BEARER_TOKEN='替换为足够长的随机字符串'
+export TZ=Asia/Shanghai
+./remote-mfi-for-xcertplay
+```
+
+Merlin 上通常以 `admin` (uid 0) 运行，无需额外 udev 规则；路由器内核已导出 `/dev/bus/usb/*`。
 
 ## 验证与诊断
 

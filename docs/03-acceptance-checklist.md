@@ -97,8 +97,9 @@ curl -fsS -H "Authorization: Bearer $MFI_BEARER_TOKEN" \
 | Docker `linux/amd64`、`linux/arm64` | 对应原生 Linux 宿主机 |
 | glibc `amd64`、`arm64` | glibc ≥ 2.35，安装 libusb |
 | musl `amd64`、`arm64` | Alpine 3.20，安装 libusb |
+| glibc226 `arm64` | glibc ≥ 2.26 的 arm64（Asuswrt-Merlin RT-AX86U 388.x 等），libusb 已由固件提供 |
 
-- [ ] 镜像 manifest 含两个架构；Release 含四个 tarball 和四份 SHA-256，全部校验通过。
+- [ ] 镜像 manifest 含两个架构；Release 含五个 tarball 和五份 SHA-256，全部校验通过。
 - [ ] tarball 内容为二进制、中英文 README、LICENSE；所有产物版本/commit 对应同一 tag。
 - [ ] 二进制 `ldd` 依赖可解析；容器默认以 root 运行，运行镜像不含源码和构建工具链。
 - [ ] 普通宿主机用户经 udev/组权限可访问设备；Docker 的 USB 挂载和 device cgroup 放行均有效。

@@ -120,6 +120,10 @@ jobs:
             libc: musl
             runner: ubuntu-22.04-arm
             image: golang:1.23-alpine3.20
+          - arch: arm64
+            libc: glibc226
+            runner: ubuntu-22.04-arm
+            image: arm64v8/debian:9-slim
     steps:
       - uses: actions/checkout@v7
 
@@ -161,6 +165,50 @@ jobs:
             sh -ec 'apk add --no-cache build-base libusb-dev=1.0.27-r0 pkgconfig
               make build'
 
+      - name: Build glibc226 binary in Debian 9
+        if: matrix.libc == 'glibc226'
+        env:
+          BUILD_IMAGE: ${{ matrix.image }}
+          TARGET_ARCH: ${{ matrix.arch }}
+          TARGET_LIBC: ${{ matrix.libc }}
+          VERSION: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -e VERSION -e COMMIT \
+            -e OUTPUT="dist/linux_${TARGET_ARCH}_${TARGET_LIBC}/remote-mfi-for-xcertplay" \
+            -e DEBIAN_FRONTEND=noninteractive \
+            -v "${GITHUB_WORKSPACE}:/src" \
+            -w /src \
+            "${BUILD_IMAGE}" \
+            bash -ec '
+              set -euo pipefail
+              # debian:9 (stretch) has moved to archive.debian.org.
+              rm -f /etc/apt/sources.list.d/*.list 2>/dev/null || true
+              printf "%s\n" \
+                "deb [check-valid-until=no] http://archive.debian.org/debian stretch main" \
+                "deb [check-valid-until=no] http://archive.debian.org/debian-security stretch/updates main" \
+                > /etc/apt/sources.list
+              apt-get -o Acquire::AllowInsecureRepositories=true \
+                      -o Acquire::AllowDowngradeToInsecureRepositories=true update
+              apt-get install -y --no-install-recommends --allow-unauthenticated \
+                ca-certificates curl xz-utils build-essential pkg-config libusb-1.0-0-dev binutils
+              curl -fsSL https://go.dev/dl/go1.23.1.linux-arm64.tar.gz -o /tmp/go.tar.gz
+              tar -C /usr/local -xzf /tmp/go.tar.gz
+              export PATH=/usr/local/go/bin:$PATH
+              go version
+              ldd --version | head -1
+              make build
+              # Confirm the produced binary needs no symbol newer than GLIBC_2.26.
+              objdump -T "${OUTPUT}" \
+                | awk "{print \$5}" \
+                | grep -E "^GLIBC_[0-9]+\\.[0-9]+" \
+                | sort -u > /tmp/glibc-refs.txt
+              cat /tmp/glibc-refs.txt
+              awk -F. "{ if (\$1 != \"GLIBC_2\" || \$2+0 > 26) { print \$0; exit 1 } }" /tmp/glibc-refs.txt
+            '
+
       - name: Package binary
         env:
           TARGET_ARCH: ${{ matrix.arch }}
@@ -196,8 +244,8 @@ jobs:
       - name: Verify release files
         run: |
           set -euo pipefail
-          test "$(find release -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 4
-          test "$(find release -maxdepth 1 -name '*.sha256' | wc -l)" -eq 4
+          test "$(find release -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 5
+          test "$(find release -maxdepth 1 -name '*.sha256' | wc -l)" -eq 5
           (cd release && sha256sum -c *.sha256)
 
       - uses: softprops/action-gh-release@v3
@@ -215,4 +263,9 @@ jobs:
 
             Platforms: `linux/amd64`, `linux/arm64`.
 
-            Host binaries are dynamically linked against libusb and are provided for glibc and musl.
+            Host binaries are dynamically linked against libusb and are provided for:
+
+            - `linux_amd64_glibc`, `linux_arm64_glibc` — glibc ≥ 2.35 (Ubuntu 22.04 baseline).
+            - `linux_amd64_musl`, `linux_arm64_musl` — Alpine 3.20 baseline.
+            - `linux_arm64_glibc226` — arm64 with glibc ≥ 2.26 for Asuswrt-Merlin routers
+              (e.g. RT-AX86U 388.x, Buildroot glibc 2.26).
