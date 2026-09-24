@@ -81,26 +81,25 @@ sudo udevadm trigger --subsystem-match=usb
 ## 2. 镜像构建 (multi-arch)
 
 ### 2.1 约束
-- 必须 `docker buildx` — 单一 `docker build` 不支持多架构 manifest
-- `gousb` 需要 cgo, `CGO_ENABLED=1`;交叉编译通过 **QEMU emulate 目标架构 native 编译** 而非手工 cross-toolchain
+- `gousb` 需要 cgo, `CGO_ENABLED=1`
+- amd64 与 arm64 **分别在 GitHub 原生 runner 上构建**,不使用 QEMU/交叉 C 工具链
+- 每个 runner 推送单架构 image digest,最终用 `docker buildx imagetools create` 合并 manifest
 - libusb 版本 **pin 死**, 防止 apk 升级触发 ABI 不兼容
 - 目标 platform: **`linux/amd64` 与 `linux/arm64`**(不支持 armv7)
 
 ### 2.2 Dockerfile 骨架(示例,不落文件,由 Codegen 阶段落地)
 
-同一份 Dockerfile 通过 buildx 出两架构;`TARGETPLATFORM` 自动被 buildx 注入:
+同一份 Dockerfile 在 `ubuntu-22.04`(amd64)和 `ubuntu-22.04-arm`(arm64)runner 上分别原生构建:
 
 ```dockerfile
 # ============ build ============
-FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS build
-ARG TARGETPLATFORM
-ARG TARGETARCH
+FROM golang:1.23-alpine3.20 AS build
 RUN apk add --no-cache build-base pkgconfig libusb-dev=1.0.27-r0
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=$TARGETARCH GOFLAGS='-trimpath' \
+RUN CGO_ENABLED=1 GOOS=linux GOFLAGS='-trimpath' \
     go build -ldflags='-s -w' -o /out/remote-mfi ./cmd/remote-mfi
 
 # ============ runtime ============
@@ -116,23 +115,17 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
 ENTRYPOINT ["/usr/local/bin/remote-mfi"]
 ```
 
-### 2.3 构建 & 推送命令
+### 2.3 构建 & 推送
 
 ```sh
-# 首次准备 buildx(仅一次)
-docker buildx create --name remote-mfi-builder --use
-docker buildx inspect --bootstrap
-
-# 多架构 build & push 到 GHCR(推荐:CI 走此路径)
-docker buildx build \
-  --platform=linux/amd64,linux/arm64 \
-  -t ghcr.io/cuckoohello/remote-mfi:v0.1.1 \
-  -t ghcr.io/cuckoohello/remote-mfi:latest \
-  --push .
-
-# 本地测试(单架构 load 到本地 daemon,无需 push)
-docker buildx build --platform=linux/amd64 -t remote-mfi:dev --load .
+# 本地只构建当前宿主架构,无需 QEMU
+docker buildx build -t remote-mfi:dev --load .
 ```
+
+正式发布由 `.github/workflows/release.yml` 执行:
+1. amd64 runner 推送 amd64 digest
+2. arm64 runner 推送 arm64 digest
+3. merge job 用 `imagetools create` 生成 `v0.1.1` 与 `latest` manifest
 
 ### 2.4 镜像 manifest 验证
 ```sh
@@ -152,31 +145,32 @@ docker image ls remote-mfi:dev
 
 | tarball | 目标平台 | 兼容宿主机 | libc |
 | --- | --- | --- | --- |
-| `remote-mfi_v0.1.1_linux_amd64_glibc.tar.gz` | linux/amd64 | Debian 12+, Ubuntu 24.04+ | glibc ≥ 2.36 |
+| `remote-mfi_v0.1.1_linux_amd64_glibc.tar.gz` | linux/amd64 | Ubuntu 22.04+, Debian 12+ | glibc ≥ 2.35 |
 | `remote-mfi_v0.1.1_linux_amd64_musl.tar.gz`  | linux/amd64 | Alpine 3.16+ | musl |
-| `remote-mfi_v0.1.1_linux_arm64_glibc.tar.gz` | linux/arm64 | Debian 12+ arm64, Raspberry Pi OS Bookworm 64-bit | glibc ≥ 2.36 |
+| `remote-mfi_v0.1.1_linux_arm64_glibc.tar.gz` | linux/arm64 | Ubuntu 22.04+ arm64, Debian 12+ arm64, Raspberry Pi OS Bookworm 64-bit | glibc ≥ 2.35 |
 | `remote-mfi_v0.1.1_linux_arm64_musl.tar.gz`  | linux/arm64 | Alpine 3.16+ arm64 | musl |
 
-**构建方式**(在 CI 里用 Docker 容器 native 编 → `docker cp` 出产物 → 打 tarball):
+**构建方式**:
+- glibc: 使用 GitHub 原生 `ubuntu-22.04` / `ubuntu-22.04-arm` runner，直接安装 libusb headers 后编译
+- musl: 在对应 CPU 架构的原生 runner 上启动 Alpine 容器编译
+- Docker 镜像和宿主机 binary 都使用对应 CPU 架构的原生 GitHub runner；整个发布链不使用 QEMU
 
 ```sh
-# glibc/amd64 举例
-docker run --rm --platform=linux/amd64 \
-  -v $(pwd):/src -w /src \
-  golang:1.23-bookworm \
-  bash -c 'apt update && apt install -y libusb-1.0-0-dev pkg-config && \
-    CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" \
-    -o /src/dist/linux_amd64_glibc/remote-mfi ./cmd/remote-mfi'
+# glibc/amd64: 在 ubuntu-22.04 runner 上
+sudo apt-get update
+sudo apt-get install -y libusb-1.0-0-dev pkg-config
+CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" \
+  -o dist/linux_amd64_glibc/remote-mfi ./cmd/remote-mfi
 
-# musl/amd64
-docker run --rm --platform=linux/amd64 \
+# musl/amd64: 在 ubuntu-22.04 runner 上
+docker run --rm \
   -v $(pwd):/src -w /src \
-  golang:1.23-alpine \
+  golang:1.23-alpine3.20 \
   sh -c 'apk add --no-cache build-base pkgconfig libusb-dev && \
     CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" \
     -o /src/dist/linux_amd64_musl/remote-mfi ./cmd/remote-mfi'
 
-# arm64 变体: 把 --platform 换成 linux/arm64, 目录后缀改 arm64
+# arm64 变体在 ubuntu-22.04-arm runner 上执行相同命令
 ```
 
 产物打包:
@@ -398,11 +392,11 @@ sudo journalctl -u remote-mfi -f
 | P50 sign 缓存命中目标 | v5.1: < 5ms | v5.2: **< 500µs** | 5ms 是 50× 宽度;map lookup + JSON encode 实际应 < 100µs | 更接近真值,便于压测发现异常 |
 | 诊断页 401 UX | v5.1: 直接返 JSON 或空白 | v5.2: HTML 分支返**引导页**,示例两种 token 传法 | 运维用浏览器打开 401 会一头雾水 | 页面自解释,不暴露 token 值 |
 | 交付形态 | v5.2: 仅 Docker 镜像 (Alpine) | v5.3: **Docker (multi-arch amd64/arm64, GHCR) + 宿主机 binary (4 变体 amd64/arm64 × glibc/musl, GitHub Releases)** | 实际部署包括嵌入式盒子/树莓派等无 Docker 场景 | Runbook 分 Docker/宿主机两种流程;镜像必须走 buildx;binary 需 4 份 tarball + sha256 |
-| CPU 架构支持 | (未明说) | v5.3: **linux/amd64 + linux/arm64**(**不支持 armv7**) | 覆盖服务器 + 树莓派 64-bit; armv7 已过时且用户群小 | 构建矩阵翻倍;测试需 QEMU emulate arm64 |
+| CPU 架构支持 | (未明说) | v5.3: **linux/amd64 + linux/arm64**(**不支持 armv7**) | 覆盖服务器 + 树莓派 64-bit; armv7 已过时且用户群小 | 使用 GitHub 原生 x64/arm64 runner,不引入 QEMU |
 | libusb 链接方式 | v5.2: Alpine 镜像内装 | v5.3: **动态链接** (Docker 内 apk / 宿主机 apt/dnf/apk) | 静态链接 cgo+musl 复杂度高;动态更简洁 | 宿主机形态用户需自装 libusb-1.0 |
 | 镜像 registry | (未指定) | **GHCR** (`ghcr.io/cuckoohello/remote-mfi`) | 与 GitHub Actions 集成,公开仓库无速率限制 | 客户端 `docker pull` 无需登录 |
 | 宿主机形态交付 | (无) | v5.3: 仅 **binary + 中英文 README + LICENSE** tarball,**不含** systemd unit / udev rules / install.sh | 各发行版差异大,统一模板反而添乱 | Runbook §3.4 给出参考 systemd unit,但由用户自建 |
-| glibc builder | `golang:1.23-bullseye` / glibc ≥ 2.31 | `golang:1.23-bookworm` / glibc ≥ 2.36 | `v0.1.0` Release 的 amd64/arm64 glibc jobs 同时失败；musl 与 Docker jobs 成功，故将 glibc 构建基线切到仍受支持的 Debian 12 | `v0.1.1` 起 glibc binary 要求 Debian 12 / Ubuntu 24.04 或同等新系统 |
+| 构建执行架构 | 单个 amd64 runner + Docker/QEMU | **GitHub 原生 `ubuntu-22.04` / `ubuntu-22.04-arm` runners** | 两次 glibc container jobs 失败；GitHub 已为公开仓库提供标准 arm64 runner | Docker、glibc、musl 全部在目标 CPU 上原生编译；glibc 基线 2.35 |
 
 ---
 

@@ -10,13 +10,21 @@ permissions:
   packages: write
 
 jobs:
-  docker:
-    name: Publish Docker image
-    runs-on: ubuntu-24.04
+  docker-build:
+    name: Docker image (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-22.04-arm
     steps:
       - uses: actions/checkout@v7
-
-      - uses: docker/setup-qemu-action@v4
 
       - uses: docker/setup-buildx-action@v4
 
@@ -26,14 +34,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/build-push-action@v7
+      - id: build
+        uses: docker/build-push-action@v7
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}:latest
+          platforms: ${{ matrix.platform }}
+          tags: ghcr.io/${{ github.repository }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
             VERSION=${{ github.ref_name }}
             COMMIT=${{ github.sha }}
@@ -45,37 +52,107 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Export image digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  docker-merge:
+    name: Publish Docker manifest
+    needs: docker-build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: digests-*
+          path: /tmp/digests
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and verify multi-arch manifest
+        working-directory: /tmp/digests
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${{ github.repository }}"
+          sources=()
+          for digest in *; do
+            sources+=("${image}@sha256:${digest}")
+          done
+          docker buildx imagetools create \
+            -t "${image}:${{ github.ref_name }}" \
+            -t "${image}:latest" \
+            "${sources[@]}"
+          docker buildx imagetools inspect "${image}:${{ github.ref_name }}"
+
   host-binaries:
     name: Host binary (${{ matrix.arch }}/${{ matrix.libc }})
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: amd64
-            platform: linux/amd64
             libc: glibc
-            image: golang:1.23-bookworm
+            runner: ubuntu-22.04
           - arch: arm64
-            platform: linux/arm64
             libc: glibc
-            image: golang:1.23-bookworm
+            runner: ubuntu-22.04-arm
           - arch: amd64
-            platform: linux/amd64
             libc: musl
+            runner: ubuntu-22.04
             image: golang:1.23-alpine3.20
           - arch: arm64
-            platform: linux/arm64
             libc: musl
+            runner: ubuntu-22.04-arm
             image: golang:1.23-alpine3.20
     steps:
       - uses: actions/checkout@v7
 
-      - uses: docker/setup-qemu-action@v4
+      - uses: actions/setup-go@v7
+        if: matrix.libc == 'glibc'
+        with:
+          go-version: "1.23.x"
+          cache: true
 
-      - name: Build dynamically linked binary
+      - name: Build glibc binary natively
+        if: matrix.libc == 'glibc'
         env:
-          TARGET_PLATFORM: ${{ matrix.platform }}
+          TARGET_ARCH: ${{ matrix.arch }}
+          TARGET_LIBC: ${{ matrix.libc }}
+          VERSION: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          OUTPUT_DIR="dist/linux_${TARGET_ARCH}_${TARGET_LIBC}"
+          mkdir -p "${OUTPUT_DIR}"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libusb-1.0-0-dev pkg-config
+          CGO_ENABLED=1 go build -trimpath \
+            -ldflags="-s -w \
+              -X github.com/cuckoohello/remote-mfi/internal/ver.Version=${VERSION} \
+              -X github.com/cuckoohello/remote-mfi/internal/ver.Commit=${COMMIT} \
+              -X github.com/cuckoohello/remote-mfi/internal/ver.BuildDate=${BUILD_DATE}" \
+            -o "${OUTPUT_DIR}/remote-mfi" ./cmd/remote-mfi
+
+      - name: Build musl binary natively
+        if: matrix.libc == 'musl'
+        env:
           BUILD_IMAGE: ${{ matrix.image }}
           TARGET_ARCH: ${{ matrix.arch }}
           TARGET_LIBC: ${{ matrix.libc }}
@@ -86,22 +163,12 @@ jobs:
           BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           OUTPUT_DIR="dist/linux_${TARGET_ARCH}_${TARGET_LIBC}"
           mkdir -p "${OUTPUT_DIR}"
-
-          if [ "${TARGET_LIBC}" = "glibc" ]; then
-            INSTALL='apt-get update && apt-get install -y --no-install-recommends libusb-1.0-0-dev pkg-config'
-            SHELL_BIN='bash'
-          else
-            INSTALL='apk add --no-cache build-base libusb-dev=1.0.27-r0 pkgconfig'
-            SHELL_BIN='sh'
-          fi
-
           docker run --rm \
-            --platform="${TARGET_PLATFORM}" \
             -e VERSION -e COMMIT -e BUILD_DATE \
             -v "${GITHUB_WORKSPACE}:/src" \
             -w /src \
             "${BUILD_IMAGE}" \
-            "${SHELL_BIN}" -ec "${INSTALL}; \
+            sh -ec "apk add --no-cache build-base libusb-dev=1.0.27-r0 pkgconfig; \
               CGO_ENABLED=1 go build -trimpath \
               -ldflags='-s -w \
                 -X github.com/cuckoohello/remote-mfi/internal/ver.Version=${VERSION} \
@@ -109,6 +176,14 @@ jobs:
                 -X github.com/cuckoohello/remote-mfi/internal/ver.BuildDate=${BUILD_DATE}' \
               -o /src/${OUTPUT_DIR}/remote-mfi ./cmd/remote-mfi"
 
+      - name: Package binary
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+          TARGET_LIBC: ${{ matrix.libc }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          OUTPUT_DIR="dist/linux_${TARGET_ARCH}_${TARGET_LIBC}"
           cp README.md README.zh-CN.md LICENSE "${OUTPUT_DIR}/"
           ARCHIVE="remote-mfi_${VERSION}_linux_${TARGET_ARCH}_${TARGET_LIBC}.tar.gz"
           tar -C "${OUTPUT_DIR}" -czf "dist/${ARCHIVE}" remote-mfi README.md README.zh-CN.md LICENSE
@@ -124,7 +199,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [docker, host-binaries]
+    needs: [docker-merge, host-binaries]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v8

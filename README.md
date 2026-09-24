@@ -80,7 +80,7 @@ Choose the GitHub Release archive matching both CPU architecture and libc:
 - `linux_arm64_glibc`
 - `linux_arm64_musl`
 
-The glibc artifacts are built on Debian 12 and require glibc 2.36 or newer.
+The glibc artifacts are built natively on Ubuntu 22.04 runners and require glibc 2.35 or newer.
 
 Install the runtime dependency:
 

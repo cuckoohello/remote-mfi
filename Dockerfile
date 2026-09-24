@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM --platform=$TARGETPLATFORM golang:1.23-alpine3.20 AS build
+FROM golang:1.23-alpine3.20 AS build
 
 ARG VERSION=dev
 ARG COMMIT=unknown

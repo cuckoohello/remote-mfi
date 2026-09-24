@@ -347,17 +347,19 @@ CI 已落在 `.github/workflows/ci.yml` 与 `.github/workflows/release.yml`，�
 
 ```
 GitHub Actions (workflow: release.yml, 由 tag v* 触发)
-├── job: docker-multi-arch
-│    - setup-buildx
-│    - docker/login-action → GHCR
-│    - buildx build --platform=linux/amd64,linux/arm64 --push
-│         → ghcr.io/cuckoohello/remote-mfi:$TAG + :latest
+├── job: docker-build (matrix: amd64/arm64)
+│    - runner: ubuntu-22.04 / ubuntu-22.04-arm
+│    - 在目标 CPU 上原生 build,每个 job 推送一个 image digest
+├── job: docker-merge
+│    - needs: docker-build
+│    - imagetools create: 两个 digest → $TAG + :latest manifest
 ├── job: host-binary (matrix: amd64/arm64 × glibc/musl)
-│    - docker run --platform=... golang:...-{bookworm|alpine}
-│    - cgo + libusb-dev, go build
+│    - runner: ubuntu-22.04 / ubuntu-22.04-arm (按目标架构原生运行)
+│    - glibc: setup-go + apt libusb-dev 后直接 go build
+│    - musl: 在同架构 runner 上运行 golang:alpine 容器
 │    - upload-artifact: remote-mfi_<tag>_linux_<arch>_<libc>.tar.gz + .sha256
 └── job: release
-     - needs: [docker-multi-arch, host-binary]
+     - needs: [docker-merge, host-binary]
      - download-artifact all
      - softprops/action-gh-release: 创建 GitHub Release, 附 4 个 tarball + sha256
 ```
@@ -367,7 +369,7 @@ GitHub Actions (workflow: release.yml, 由 tag v* 触发)
 - `go test -race ./...`
 - `go build` 单架构(冒烟)
 - `gofmt -l` 必须无输出
-- Docker buildx `linux/amd64,linux/arm64` 构建冒烟
+- Docker amd64/arm64 在各自原生 runner 构建冒烟
 
 **签名策略**(暂缓,记入开放问题):
 - cosign 对镜像签名?
@@ -389,7 +391,7 @@ GitHub Actions (workflow: release.yml, 由 tag v* 触发)
 | 日志库 | stdlib `log/slog` | zap / zerolog | slog 是 Go 1.21+ 官方方案, 性能足够, 无第三方依赖 |
 | 时间戳格式 | 本地时区 + ISO 8601 offset | UTC / Unix ms | v5.2 决策, 便于运维现场直读 |
 | 部署形态 | Docker(multi-arch) + host binary(4 变体) | 只 Docker / 只 binary / 加 deb 包 | v5.3 决策 |
-| CI 平台 | GitHub Actions | GitLab CI / Drone / 自建 | 与 GitHub Releases 深度集成, 支持 buildx + QEMU |
+| CI 平台 | GitHub Actions 原生 x64/arm64 runners | GitLab CI / Drone / 单 x64 runner + QEMU | 与 GitHub Releases 深度集成；原生目标架构避免 cgo/QEMU 兼容问题 |
 
 ---
 

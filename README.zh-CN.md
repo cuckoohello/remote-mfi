@@ -80,7 +80,7 @@ docker run -d \
 - `linux_arm64_glibc`
 - `linux_arm64_musl`
 
-glibc 产物基于 Debian 12 构建，要求宿主机 glibc 2.36 或更高版本。
+glibc 产物使用 Ubuntu 22.04 原生 runner 构建，要求宿主机 glibc 2.35 或更高版本。
 
 安装运行时依赖：
 
