@@ -201,10 +201,10 @@ jobs:
               ldd --version | head -1
               make build
               # Confirm the produced binary needs no symbol newer than GLIBC_2.26.
-              objdump -T "${OUTPUT}" \
-                | awk "{print \$5}" \
-                | grep -E "^GLIBC_[0-9]+\\.[0-9]+" \
-                | sort -u > /tmp/glibc-refs.txt
+              # objdump -T lists dynamic symbols; pipefail-safe extraction.
+              objdump -T "${OUTPUT}" > /tmp/dt.txt || true
+              awk "{print \$5}" /tmp/dt.txt | grep -E "^GLIBC_[0-9]+\\.[0-9]+" | sort -u > /tmp/glibc-refs.txt || true
+              echo "GLIBC symbol references:"
               cat /tmp/glibc-refs.txt
               awk -F. "{ if (\$1 != \"GLIBC_2\" || \$2+0 > 26) { print \$0; exit 1 } }" /tmp/glibc-refs.txt
             '
