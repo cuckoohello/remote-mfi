@@ -1,5 +1,7 @@
 # remote-mfi
 
+[English](README.md) | [中文](README.zh-CN.md)
+
 `remote-mfi` exposes a physical MFi authentication coprocessor connected through a CH341 USB-I2C bridge as the HTTP API consumed by [shilapi/xcertplay](https://github.com/shilapi/xcertplay).
 
 The service runs on Linux `amd64` and `arm64`, either as a multi-architecture Docker image or as a dynamically linked host binary.

@@ -109,9 +109,9 @@ jobs:
                 -X github.com/cuckoohello/remote-mfi/internal/ver.BuildDate=${BUILD_DATE}' \
               -o /src/${OUTPUT_DIR}/remote-mfi ./cmd/remote-mfi"
 
-          cp README.md LICENSE "${OUTPUT_DIR}/"
+          cp README.md README.zh-CN.md LICENSE "${OUTPUT_DIR}/"
           ARCHIVE="remote-mfi_${VERSION}_linux_${TARGET_ARCH}_${TARGET_LIBC}.tar.gz"
-          tar -C "${OUTPUT_DIR}" -czf "dist/${ARCHIVE}" remote-mfi README.md LICENSE
+          tar -C "${OUTPUT_DIR}" -czf "dist/${ARCHIVE}" remote-mfi README.md README.zh-CN.md LICENSE
           (cd dist && sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256")
 
       - uses: actions/upload-artifact@v7

@@ -213,7 +213,7 @@
 - [ ] N9. **glibc/arm64**: 树莓派 4 或 arm64 云主机上 `./remote-mfi` 启动无错
 - [ ] N10. **musl/arm64**: Alpine arm64 上 `./remote-mfi` 启动无错
 - [ ] N11. **交叉污染防御**: musl binary 拷到 glibc 宿主机跑 → **合理错误提示**(不是段错误);反之亦然
-- [ ] N12. binary tarball 内容仅含 `remote-mfi + README.md + LICENSE`,无 `.go` / `.git` / debug symbol 冗余
+- [ ] N12. binary tarball 内容仅含 `remote-mfi + README.md + README.zh-CN.md + LICENSE`,无 `.go` / `.git` / debug symbol 冗余
 
 ### N.3 libusb 依赖 & udev
 - [ ] N13. glibc 宿主机未装 libusb 时启动 → `error while loading shared libraries: libusb-1.0.so.0` 提示清晰

@@ -182,12 +182,12 @@ docker run --rm --platform=linux/amd64 \
 产物打包:
 ```sh
 cd dist/linux_amd64_glibc && \
-  tar czf ../remote-mfi_v0.1.0_linux_amd64_glibc.tar.gz remote-mfi README.md LICENSE
+  tar czf ../remote-mfi_v0.1.0_linux_amd64_glibc.tar.gz remote-mfi README.md README.zh-CN.md LICENSE
 ```
 
 **产物内容**(tarball 展开后):
 - `remote-mfi` — 单文件 binary,动态链接 libusb-1.0
-- `README.md` — 快速起步(含 libusb 装法 + udev 规则 + 启动示例)
+- `README.md` / `README.zh-CN.md` — 中英文快速起步(含 libusb 装法 + udev 规则 + 启动示例)
 - `LICENSE`
 
 ### 2.7 GitHub Releases 发布规范
