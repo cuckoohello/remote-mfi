@@ -1,7 +1,7 @@
 .git
 .github
 dist
-remote-mfi
+remote-mfi-for-xcertplay
 *.test
 *.out
 .DS_Store

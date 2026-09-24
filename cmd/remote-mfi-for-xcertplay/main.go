@@ -11,23 +11,23 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cuckoohello/remote-mfi/internal/biz"
-	"github.com/cuckoohello/remote-mfi/internal/chip"
-	"github.com/cuckoohello/remote-mfi/internal/config"
-	"github.com/cuckoohello/remote-mfi/internal/httpapi"
-	"github.com/cuckoohello/remote-mfi/internal/transport"
-	"github.com/cuckoohello/remote-mfi/internal/ver"
+	"github.com/cuckoohello/remote-mfi-for-xcertplay/internal/biz"
+	"github.com/cuckoohello/remote-mfi-for-xcertplay/internal/chip"
+	"github.com/cuckoohello/remote-mfi-for-xcertplay/internal/config"
+	"github.com/cuckoohello/remote-mfi-for-xcertplay/internal/httpapi"
+	"github.com/cuckoohello/remote-mfi-for-xcertplay/internal/transport"
+	"github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver"
 )
 
 const shutdownTimeout = 10 * time.Second
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
-		fmt.Printf("remote-mfi %s (commit=%s built=%s)\n", ver.Version, ver.Commit, ver.BuildDate)
+		fmt.Printf("remote-mfi-for-xcertplay %s (commit=%s built=%s)\n", ver.Version, ver.Commit, ver.BuildDate)
 		return
 	}
 	if err := run(); err != nil {
-		fmt.Fprintf(os.Stderr, "remote-mfi: %v\n", err)
+		fmt.Fprintf(os.Stderr, "remote-mfi-for-xcertplay: %v\n", err)
 		os.Exit(1)
 	}
 }

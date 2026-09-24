@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/gousb"
 
-	"github.com/cuckoohello/remote-mfi/internal/config"
+	"github.com/cuckoohello/remote-mfi-for-xcertplay/internal/config"
 )
 
 const (

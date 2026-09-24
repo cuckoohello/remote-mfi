@@ -11,9 +11,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cuckoohello/remote-mfi/internal/biz"
-	"github.com/cuckoohello/remote-mfi/internal/chip"
-	"github.com/cuckoohello/remote-mfi/internal/transport"
+	"github.com/cuckoohello/remote-mfi-for-xcertplay/internal/biz"
+	"github.com/cuckoohello/remote-mfi-for-xcertplay/internal/chip"
+	"github.com/cuckoohello/remote-mfi-for-xcertplay/internal/transport"
 )
 
 type certificateResponse struct {

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cuckoohello/remote-mfi/internal/transport"
+	"github.com/cuckoohello/remote-mfi-for-xcertplay/internal/transport"
 )
 
 const (

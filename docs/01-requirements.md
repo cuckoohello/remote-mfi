@@ -121,7 +121,7 @@ type I2cTransport interface {
 ### 5.1 芯片串行访问
 MFi 协处理器是**共享有状态资源**,并行两次 signChallenge 会破坏 `0x10` 状态机 (先写 challenge → 触发 → 别的请求又写 challenge → 触发)。→ 服务端必须**全局串行**所有触碰芯片的操作。
 
-**部署形态说明**: 一个 remote-mfi 服务后端支持**多台 head unit 共享**,多头单并发请求是常规场景(不是异常)。因此:
+**部署形态说明**: 一个 remote-mfi-for-xcertplay 服务后端支持**多台 head unit 共享**,多头单并发请求是常规场景(不是异常)。因此:
 - `/mfi/sign` 与 `/mfi/reset` 并发**必然发生**(头单 A 正在 sign,头单 B 开局立即 reset)
 - 服务端设计必须保证任意两个 endpoint 并发调用都是安全的
 - **验证方法**: reset 语义为 no-op → 与任何端点并发都无竞争

@@ -1,6 +1,6 @@
 # 03 · 架构 (Architecture)
 
-> 版本: v5.3
+> 版本: v5.4
 > 定位: 从**第一性原理**出发,把 [01-requirements.md](./01-requirements.md) 的约束翻译成 Go 项目结构。
 > **本文档描述"如何实现",不描述"实现细节"**。真正的实现在代码里,不在这份 Markdown 里。
 
@@ -52,9 +52,9 @@
 ## 2. Go 项目目录结构
 
 ```
-remote-mfi/
+remote-mfi-for-xcertplay/
 ├── cmd/
-│   └── remote-mfi/
+│   └── remote-mfi-for-xcertplay/
 │       └── main.go            # 极薄, 只做 wire-up: 读 env → 建 layers → ListenAndServe
 ├── internal/                  # 全部内部包, 禁止外部 import
 │   ├── config/
@@ -89,7 +89,7 @@ remote-mfi/
 - `internal/` 保证包不被外部 import,清晰的对内契约边界
 - 接口由**消费方**定义: `biz.ChipDriver` 由 biz 定义、`httpapi.Service` 由 httpapi 定义；`chip.Driver` / `biz.Service` 保持具体类型。这符合 Go 的小接口惯例
 - 测试 fake 与测试放在同包 `_test.go`,不把仅测试使用的实现带进生产 binary
-- `cmd/remote-mfi/main.go` **纯 wire-up**,零业务逻辑;有些人主张再拆一个 `app.go`,我认为对本项目规模是过度设计
+- `cmd/remote-mfi-for-xcertplay/main.go` **纯 wire-up**,零业务逻辑;有些人主张再拆一个 `app.go`,我认为对本项目规模是过度设计
 - **不建 `pkg/` 目录**:这个项目的所有代码都是"服务内部",没有可复用到外部的公共库
 
 ---
@@ -357,7 +357,7 @@ GitHub Actions (workflow: release.yml, 由 tag v* 触发)
 │    - runner: ubuntu-22.04 / ubuntu-22.04-arm (按目标架构原生运行)
 │    - glibc: setup-go + apt libusb-dev 后直接 go build
 │    - musl: 在同架构 runner 上运行 golang:alpine 容器
-│    - upload-artifact: remote-mfi_<tag>_linux_<arch>_<libc>.tar.gz + .sha256
+│    - upload-artifact: remote-mfi-for-xcertplay_<tag>_linux_<arch>_<libc>.tar.gz + .sha256
 └── job: release
      - needs: [docker-merge, host-binary]
      - download-artifact all
@@ -374,7 +374,7 @@ GitHub Actions (workflow: release.yml, 由 tag v* 触发)
 **签名策略**(暂缓,记入开放问题):
 - cosign 对镜像签名?
 - Release 附件是否 gpg 签名?
-- v0.1.1 先不做,记 [06-open-questions.md#o3-supply-chain-signing](./06-open-questions.md#o3-supply-chain-signing) 里。
+- v0.2.0 先不做,记 [06-open-questions.md#o3-supply-chain-signing](./06-open-questions.md#o3-supply-chain-signing) 里。
 
 ---
 
@@ -400,7 +400,7 @@ GitHub Actions (workflow: release.yml, 由 tag v* 触发)
 - **[00-overview.md](./00-overview.md)** — 顶层定位与目标
 - **[01-requirements.md](./01-requirements.md)** — 硬约束来源(客户端/芯片/并发/健康度)
 - **[02-api-contract.md](./02-api-contract.md)** — HTTP 契约,`httpapi/` 包严格按此实现
-- **[04-runbook.md](./04-runbook.md)** — 部署运维,`cmd/remote-mfi/main.go` 读的环境变量都定义在这
+- **[04-runbook.md](./04-runbook.md)** — 部署运维,`cmd/remote-mfi-for-xcertplay/main.go` 读的环境变量都定义在这
 - **[05-acceptance-checklist.md](./05-acceptance-checklist.md)** — 逐项打勾式验收,`internal/*` 每个包都对应几条 checklist
 - **[06-open-questions.md](./06-open-questions.md)** — 本文档中所有"暂缓 / 未定义"决策的集中记录
 

@@ -1,8 +1,12 @@
-# remote-mfi
+# remote-mfi-for-xcertplay
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-`remote-mfi` 将通过 CH341 USB-I2C 桥连接的实体 MFi 认证协处理器封装为 HTTP API，供 [shilapi/xcertplay](https://github.com/shilapi/xcertplay) 的 Remote MFi 客户端调用。
+> **当前状态：实验性版本，尚未完成实体硬件验证。**
+>
+> CH341/MFi 实体设备仍在运输途中。目前已通过单元测试、race detector、HTTP 契约测试、CI 构建和无设备启动验证，但尚未验证真实 MFi 签名及 CarPlay `AA05 AuthenticationSucceeded`。后续计划重点适配并验收 Asuswrt-Merlin 路由器和群晖 Container Manager（Docker）。
+
+`remote-mfi-for-xcertplay` 将通过 CH341 USB-I2C 桥连接的实体 MFi 认证协处理器封装为 HTTP API，供 [shilapi/xcertplay](https://github.com/shilapi/xcertplay) 的 Remote MFi 客户端调用。
 
 服务支持 Linux `amd64` 与 `arm64`，既可使用多架构 Docker 镜像，也可直接在宿主机运行动态链接的二进制文件。
 
@@ -47,7 +51,7 @@ sudo udevadm trigger --subsystem-match=usb
 公开的多架构镜像发布在 GHCR：
 
 ```sh
-docker pull ghcr.io/cuckoohello/remote-mfi:v0.1.1
+docker pull ghcr.io/cuckoohello/remote-mfi-for-xcertplay:v0.2.0
 ```
 
 为了支持 USB 热插拔，需要挂载整个 USB bus，并放行 USB 字符设备主设备号 `189`。容器以非 root 用户运行，因此还要传入宿主机 `plugdev` 的数字 GID：
@@ -56,7 +60,7 @@ docker pull ghcr.io/cuckoohello/remote-mfi:v0.1.1
 USB_GID="$(getent group plugdev | cut -d: -f3)"
 
 docker run -d \
-  --name remote-mfi \
+  --name remote-mfi-for-xcertplay \
   --restart unless-stopped \
   -p 8080:8080 \
   -e MFI_BEARER_TOKEN='替换为足够长的随机字符串' \
@@ -64,7 +68,7 @@ docker run -d \
   --device-cgroup-rule='c 189:* rmw' \
   --group-add "$USB_GID" \
   -v /dev/bus/usb:/dev/bus/usb \
-  ghcr.io/cuckoohello/remote-mfi:v0.1.1
+  ghcr.io/cuckoohello/remote-mfi-for-xcertplay:v0.2.0
 ```
 
 `MFI_BEARER_TOKEN` 是可选项。未设置时，`/mfi/*` 和 `/debug/usb` 均不鉴权，只应在隔离网络或仅监听 loopback 时使用。`/healthz` 始终不鉴权。
@@ -102,10 +106,10 @@ export MFI_BEARER_TOKEN='替换为足够长的随机字符串'
 export MFI_CH341_USB_IDS='1a86:5512'
 export MFI_MFI_I2C_ADDRESS='0x11'
 export MFI_CH341_I2C_SPEED_KHZ='100'
-remote-mfi
+remote-mfi-for-xcertplay
 ```
 
-宿主机产物动态链接 libusb。运行前可用 `ldd ./remote-mfi` 确认所选产物与宿主机 libc 匹配，并能解析 `libusb-1.0.so.0`。
+宿主机产物动态链接 libusb。运行前可用 `ldd ./remote-mfi-for-xcertplay` 确认所选产物与宿主机 libc 匹配，并能解析 `libusb-1.0.so.0`。
 
 ## 配置项
 
@@ -127,7 +131,7 @@ remote-mfi
 ```sh
 make check
 make build
-./remote-mfi --version
+./remote-mfi-for-xcertplay --version
 ```
 
 `make check` 会执行单元测试、race detector 和 `go vet`。测试使用脚本化 transport，不依赖 USB 硬件。CH341 集成测试以及真实 CarPlay `AA05 AuthenticationSucceeded` 验收仍需实体硬件。

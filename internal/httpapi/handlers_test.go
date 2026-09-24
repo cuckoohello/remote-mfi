@@ -18,8 +18,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/cuckoohello/remote-mfi/internal/biz"
-	"github.com/cuckoohello/remote-mfi/internal/transport"
+	"github.com/cuckoohello/remote-mfi-for-xcertplay/internal/biz"
+	"github.com/cuckoohello/remote-mfi-for-xcertplay/internal/transport"
 )
 
 func TestRemoteMFIFlowAndIdempotency(t *testing.T) {

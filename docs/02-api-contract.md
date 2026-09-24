@@ -1,6 +1,6 @@
 # 02 · API 契约 (Frozen Contract)
 
-> 端点数 (v5.2): **5** — `/mfi/certificate`, `/mfi/sign`, `/mfi/reset`, `/debug/usb`, `/healthz`
+> 端点数 (v5.4, API 契约沿用 v5.2): **5** — `/mfi/certificate`, `/mfi/sign`, `/mfi/reset`, `/debug/usb`, `/healthz`
 > 冻结基准: [carplay/README.md](https://github.com/shilapi/xcertplay/blob/3ac55e3/README.md) `Remote MFI` 章节 @ `master 3ac55e3`。
 > **任何字段修改都视为破坏性变更**,需要客户端同步升级。
 

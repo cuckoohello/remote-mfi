@@ -1,10 +1,23 @@
 # 00 · 概览 (Overview)
 
-> 版本: **v5.3** (baseline updated 2026-09-24)
+> 版本: **v5.4** (baseline updated 2026-09-24)
 > 语言/运行时: Go
 > 交付形态: Docker 镜像 (GHCR, multi-arch) + 宿主机 binary (GitHub Releases)
 > 支持架构: linux/amd64, linux/arm64
 > 上游客户端 commit: [carplay](https://github.com/shilapi/xcertplay) `master @ 3ac55e3`
+
+---
+
+## 0. 当前状态
+
+> **实验性版本，尚未完成实体硬件验证。**
+
+- CH341/MFi 实体设备仍在运输途中
+- 已验证: 单元测试、race detector、HTTP 契约、CI、amd64/arm64 Docker 构建、无设备启动
+- 未验证: 实体芯片寄存器时序、真实签名、CarPlay `AA05 AuthenticationSucceeded`
+- 计划适配平台: **Asuswrt-Merlin 路由器**、**群晖 Container Manager (Docker)**
+
+在上述实体测试完成前，不声明生产可用。
 
 ---
 
@@ -16,14 +29,14 @@
 
 ## 2. 数据流概览
 
-**多头单共享形态**: 一个 remote-mfi 服务后端可以同时被多台 Android head unit 使用。多头单并发请求属于**常规部署形态**,不是异常。
+**多头单共享形态**: 一个 remote-mfi-for-xcertplay 服务后端可以同时被多台 Android head unit 使用。多头单并发请求属于**常规部署形态**,不是异常。
 
 ```
 ┌─────────────────────┐
 │ head unit A         │───┐
 └─────────────────────┘   │
 ┌─────────────────────┐   │  HTTP/JSON (Bearer 可选)     ┌────────────────────────────┐
-│ head unit B         │───┼──────────────────────────▶ │  remote-mfi (this repo)    │
+│ head unit B         │───┼──────────────────────────▶ │  remote-mfi-for-xcertplay (this repo)    │
 └─────────────────────┘   │                            │                            │
 ┌─────────────────────┐   │                            │  ┌──────────────────────┐  │
 │ head unit N …       │───┘                            │  │ HTTP handler layer   │  │
@@ -93,12 +106,13 @@
 
 ## 6. 版本与变更日志入口
 
-- 本文档族版本: **v5.3** (2026-09-24 更新)
+- 本文档族版本: **v5.4** (2026-09-24 更新)
 - 版本迭代:
   - **v5** — 精简版基线(移除 singleflight / maxQueue / 证书缓存 / stateMutex / 独立 debug JSON 端点)
   - **v5.1** — reset 改为 no-op(多头单场景避免误清幂等缓存)+ 诊断页 Recent Requests
   - **v5.2** — 修正健康度定义(去 `busy` 状态, 去"30s 时间戳"启发式);明确锁层级契约;完善诊断页 401 UX;`note=cached` 语义收敛到 sign;冷启动指标拆分;时区改为容器本地时区带 offset
   - **v5.3** — **多形态多架构交付**:公开 GitHub 仓库 + GHCR multi-arch 镜像(amd64/arm64) + GitHub Releases 宿主机 binary(4 变体: amd64/arm64 × glibc/musl);libusb 动态链接;宿主机形态**仅交付 binary**,用户自行装依赖 / 配 udev / 起 systemd
+  - **v5.4** — 项目更名为 `remote-mfi-for-xcertplay`;增加实验性/未实测声明;把 Merlin 路由器与群晖 Docker 列为后续实体适配目标
 - 变更矩阵: 见 [04-runbook.md#变更矩阵](./04-runbook.md#5-变更矩阵)
 - 验收基准: 见 [05-acceptance-checklist.md](./05-acceptance-checklist.md)
 - 架构骨架: 见 [03-architecture.md](./03-architecture.md)

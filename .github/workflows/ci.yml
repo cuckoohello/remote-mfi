@@ -47,11 +47,11 @@ jobs:
         run: |
           CGO_ENABLED=1 go build -trimpath \
             -ldflags="-s -w \
-              -X github.com/cuckoohello/remote-mfi/internal/ver.Version=ci \
-              -X github.com/cuckoohello/remote-mfi/internal/ver.Commit=${GITHUB_SHA} \
-              -X github.com/cuckoohello/remote-mfi/internal/ver.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -o remote-mfi ./cmd/remote-mfi
-          ./remote-mfi --version
+              -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.Version=ci \
+              -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.Commit=${GITHUB_SHA} \
+              -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o remote-mfi-for-xcertplay ./cmd/remote-mfi-for-xcertplay
+          ./remote-mfi-for-xcertplay --version
 
       - uses: actions/upload-artifact@v7
         with:
@@ -114,9 +114,9 @@ jobs:
         run: |
           CGO_ENABLED=1 go build -trimpath \
             -ldflags="-s -w \
-              -X github.com/cuckoohello/remote-mfi/internal/ver.Version=ci \
-              -X github.com/cuckoohello/remote-mfi/internal/ver.Commit=${GITHUB_SHA} \
-              -X github.com/cuckoohello/remote-mfi/internal/ver.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -o remote-mfi ./cmd/remote-mfi
-          file remote-mfi
-          ldd remote-mfi | grep -F libusb-1.0.so.0
+              -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.Version=ci \
+              -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.Commit=${GITHUB_SHA} \
+              -X github.com/cuckoohello/remote-mfi-for-xcertplay/internal/ver.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o remote-mfi-for-xcertplay ./cmd/remote-mfi-for-xcertplay
+          file remote-mfi-for-xcertplay
+          ldd remote-mfi-for-xcertplay | grep -F libusb-1.0.so.0

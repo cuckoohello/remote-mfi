@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cuckoohello/remote-mfi/internal/biz"
+	"github.com/cuckoohello/remote-mfi-for-xcertplay/internal/biz"
 )
 
 const maximumRequestBodyBytes = 64 * 1024

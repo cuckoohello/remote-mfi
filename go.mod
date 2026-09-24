@@ -1,4 +1,4 @@
-module github.com/cuckoohello/remote-mfi
+module github.com/cuckoohello/remote-mfi-for-xcertplay
 
 go 1.23
 

@@ -1,6 +1,6 @@
 # 06 · 开放问题 (Open Questions)
 
-> 版本: v5.3
+> 版本: v5.4
 > 定位: 收录**已识别但主动暂缓**的问题, 避免设计阶段被这些次要 concern 拖住节奏。
 > 每条都有明确的**触发条件**决定何时回来处理。
 
@@ -69,14 +69,14 @@ chipGate → transport.ioMu → transport.sessionMu
 
 **背景**: [00-overview §4](./00-overview.md#4-非目标-non-goals--明确不做) 明确"一个进程绑定一个 CH341"。但真实场景可能:
 - 一台宿主机插 2 片 CH341 + 2 片 MFi 芯片,希望**同时**服务
-- 或多个 remote-mfi 实例做主备(一片主 + 一片备)
+- 或多个 remote-mfi-for-xcertplay 实例做主备(一片主 + 一片备)
 
 **当前策略**: 简单粗暴 — 每芯片起一个 container/process,不同端口,不同 URL,由客户端配置分流。
 
 **触发**: 用户明确报告 "n 台头单同时握手, 单芯片 200ms/次 顶不住"。
 
 **当被触发时的候选**:
-- A. **多进程 (推荐, 无代码改)**: 上游负载均衡, `remote-mfi-1:8080` `remote-mfi-2:8081` ...
+- A. **多进程 (推荐, 无代码改)**: 上游负载均衡, `remote-mfi-for-xcertplay-1:8080` `remote-mfi-for-xcertplay-2:8081` ...
 - B. **单进程多 transport**: 大改架构, chipService 变 chipPool, 引入路由算法
 - C. **保持当前 + 明确容量文档**: 单芯片 QPS ≈ 5 (200ms/次) 是硬上限, 超出即需 A
 
@@ -121,7 +121,7 @@ chipGate → transport.ioMu → transport.sessionMu
 
 ## O.8 [🟢 运维] 灰度 / 蓝绿升级
 
-**背景**: 一片 MFi 芯片对应一个物理 accessory identity, 客户端 gets 到的证书是绑定这片芯片的。升级 remote-mfi 版本:
+**背景**: 一片 MFi 芯片对应一个物理 accessory identity, 客户端 gets 到的证书是绑定这片芯片的。升级 remote-mfi-for-xcertplay 版本:
 - Docker: `docker stop && docker run` 期间客户端会瞬时报错 → 5xx 重试成功
 - 宿主机 binary: `systemctl restart` 同上
 
@@ -163,6 +163,20 @@ chipGate → transport.ioMu → transport.sessionMu
 
 ---
 
+## O.11 [🟠 产品] Merlin 路由器与群晖 Docker 实机适配
+
+**背景**: 实体 CH341/MFi 设备仍在运输途中。当前测试覆盖 fake transport、HTTP 契约、并发/race、无设备启动和 CI 构建，尚未完成真实签名及 CarPlay `AA05` 验证。
+
+**目标平台**:
+- Asuswrt-Merlin 路由器：重点确认 CPU 架构、libc 类型、USB device cgroup/udev 能力、可用持久化目录
+- 群晖 Container Manager：重点确认 `/dev/bus/usb` 映射、USB major 189 cgroup rule、容器非 root GID 和热插拔恢复
+
+**触发**: 实体设备到货。
+
+**验收入口**: [05-acceptance-checklist.md](./05-acceptance-checklist.md) A~N 全量 checklist；不得只验证 `/healthz`。
+
+---
+
 ## 总览优先级
 
 | # | 类别 | 触发条件 | 预估工作量 |
@@ -175,6 +189,7 @@ chipGate → transport.ioMu → transport.sessionMu
 | O.8 | 运维 | 已确定不做 | — |
 | O.9 | 架构 | 用户明确请求 | S — 一个 handler |
 | O.10 | 产品 | shilapi 要求 | L — 另建服务 |
+| O.11 | 产品 | 实体设备到货 | M — 两类目标平台实机验证 |
 
 ---
 

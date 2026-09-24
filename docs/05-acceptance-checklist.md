@@ -1,4 +1,4 @@
-# 05 · 验收 Checklist (v5.3)
+# 05 · 验收 Checklist (v5.4)
 
 > 原则: **全面验收不抽象**,按 checklist 逐项过,不只抽查一两个。
 > 每条都必须能对应到 [02-api-contract.md](./02-api-contract.md) 或 [01-requirements.md](./01-requirements.md) 的某个条款。
@@ -81,7 +81,7 @@
 - [ ] E1. 无鉴权即可访问 (即使设了 `MFI_BEARER_TOKEN`)
 - [ ] E2. 芯片就绪 → `{"ok":true,"chip":"ready"}`
 - [ ] E3. 拔掉 CH341 → **下次 healthz 探测立即**(而不是 30s 后)变为 `{"ok":false,"chip":"missing","reason":"..."}` (v5.2 已移除时间启发式)
-- [ ] E4. Docker `docker inspect --format '{{.State.Health.Status}}' remote-mfi` 返回 `healthy`
+- [ ] E4. Docker `docker inspect --format '{{.State.Health.Status}}' remote-mfi-for-xcertplay` 返回 `healthy`
 - [ ] E5. 芯片被别的进程 claim → `{"ok":false,"chip":"error","reason":"claim failed: ..."}`
 - [ ] E6. **无 `busy` 状态**(v5.2 关键回归): 人为让一个 sign 独占 chipMutex 5 秒,期间 healthz 仍返 `{"ok":true,"chip":"ready"}`,**HEALTHCHECK 不能因忙碌触发 unhealthy**
 - [ ] E7. **healthz 与 /debug/usb 同源**: 拔掉 CH341 后同时 curl 两个端点,`chip.status` 值一致(v5.2)
@@ -200,20 +200,20 @@
 ## N. v5.3 多形态 & 多架构
 
 ### N.1 Docker 镜像 (multi-arch)
-- [ ] N1. `docker buildx imagetools inspect ghcr.io/cuckoohello/remote-mfi:v0.1.1` 显示 **`linux/amd64` + `linux/arm64`** 两个 sub-image
+- [ ] N1. `docker buildx imagetools inspect ghcr.io/cuckoohello/remote-mfi-for-xcertplay:v0.2.0` 显示 **`linux/amd64` + `linux/arm64`** 两个 sub-image
 - [ ] N2. amd64 宿主机上 `docker pull` 后 `docker image inspect` 显示 `Architecture: amd64`,arm64 宿主机上 `arm64`
 - [ ] N3. 两架构镜像各自 SIZE ≤ 40MB
-- [ ] N4. `docker run --pull=always ghcr.io/cuckoohello/remote-mfi:latest` **匿名可拉**(公开仓库)
+- [ ] N4. `docker run --pull=always ghcr.io/cuckoohello/remote-mfi-for-xcertplay:latest` **匿名可拉**(公开仓库)
 - [ ] N5. amd64 + arm64 各跑一遍 A~M 组关键用例(至少 A/B/C/D/E/F1/F2/G1/G5),行为一致
 
 ### N.2 宿主机 binary (4 变体)
 - [ ] N6. GitHub Releases 页面含 4 个 tarball + 4 个 `.sha256` 校验文件
-- [ ] N7. **glibc/amd64**: 在 Ubuntu 22.04 上 `sha256sum -c` 通过, `ldd remote-mfi` 显示动态链接 `libusb-1.0.so.0` 与 glibc,`./remote-mfi` 启动无错
-- [ ] N8. **musl/amd64**: 在 Alpine 3.20 上 `sha256sum -c` 通过, `ldd remote-mfi` 显示 musl + libusb,`./remote-mfi` 启动无错
-- [ ] N9. **glibc/arm64**: 树莓派 4 或 arm64 云主机上 `./remote-mfi` 启动无错
-- [ ] N10. **musl/arm64**: Alpine arm64 上 `./remote-mfi` 启动无错
+- [ ] N7. **glibc/amd64**: 在 Ubuntu 22.04 上 `sha256sum -c` 通过, `ldd remote-mfi-for-xcertplay` 显示动态链接 `libusb-1.0.so.0` 与 glibc,`./remote-mfi-for-xcertplay` 启动无错
+- [ ] N8. **musl/amd64**: 在 Alpine 3.20 上 `sha256sum -c` 通过, `ldd remote-mfi-for-xcertplay` 显示 musl + libusb,`./remote-mfi-for-xcertplay` 启动无错
+- [ ] N9. **glibc/arm64**: 树莓派 4 或 arm64 云主机上 `./remote-mfi-for-xcertplay` 启动无错
+- [ ] N10. **musl/arm64**: Alpine arm64 上 `./remote-mfi-for-xcertplay` 启动无错
 - [ ] N11. **交叉污染防御**: musl binary 拷到 glibc 宿主机跑 → **合理错误提示**(不是段错误);反之亦然
-- [ ] N12. binary tarball 内容仅含 `remote-mfi + README.md + README.zh-CN.md + LICENSE`,无 `.go` / `.git` / debug symbol 冗余
+- [ ] N12. binary tarball 内容仅含 `remote-mfi-for-xcertplay + README.md + README.zh-CN.md + LICENSE`,无 `.go` / `.git` / debug symbol 冗余
 
 ### N.3 libusb 依赖 & udev
 - [ ] N13. glibc 宿主机未装 libusb 时启动 → `error while loading shared libraries: libusb-1.0.so.0` 提示清晰
@@ -222,14 +222,14 @@
 - [ ] N16. `sudo usermod -aG plugdev $USER` 后重新登录, 启动服务返 ready
 
 ### N.4 systemd(参考实现验收)
-- [ ] N17. 按 [Runbook §3.4.4](./04-runbook.md#344-生产运行用户自己写-systemd-unit) 参考 unit 部署, `systemctl status remote-mfi` 显示 `active (running)`
-- [ ] N18. `journalctl -u remote-mfi -f` 能实时看到 slog JSON 输出
-- [ ] N19. `systemctl restart remote-mfi` 后进程重新起来, healthz 恢复 ready
+- [ ] N17. 按 [Runbook §3.4.4](./04-runbook.md#344-生产运行用户自己写-systemd-unit) 参考 unit 部署, `systemctl status remote-mfi-for-xcertplay` 显示 `active (running)`
+- [ ] N18. `journalctl -u remote-mfi-for-xcertplay -f` 能实时看到 slog JSON 输出
+- [ ] N19. `systemctl restart remote-mfi-for-xcertplay` 后进程重新起来, healthz 恢复 ready
 - [ ] N20. 系统重启后 unit 自动拉起 (`WantedBy=multi-user.target` 生效)
 
 ### N.5 交付一致性
-- [ ] N21. 同一 tag(如 `v0.1.1`)的 Docker 镜像 sub-image 与 tarball binary **来自同一 git commit**(Release notes 显式引用 commit SHA)
-- [ ] N22. Docker 镜像的 `remote-mfi --version`(如实现)输出与 GitHub Release tag 一致
+- [ ] N21. 同一 tag(如 `v0.2.0`)的 Docker 镜像 sub-image 与 tarball binary **来自同一 git commit**(Release notes 显式引用 commit SHA)
+- [ ] N22. Docker 镜像的 `remote-mfi-for-xcertplay --version`(如实现)输出与 GitHub Release tag 一致
 - [ ] N23. GHCR 上 `latest` tag 只指向最新稳定 release, 不指向 pre-release
 
 ---

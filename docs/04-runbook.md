@@ -100,42 +100,42 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=1 GOOS=linux GOFLAGS='-trimpath' \
-    go build -ldflags='-s -w' -o /out/remote-mfi ./cmd/remote-mfi
+    go build -ldflags='-s -w' -o /out/remote-mfi-for-xcertplay ./cmd/remote-mfi-for-xcertplay
 
 # ============ runtime ============
 FROM alpine:3.20
 RUN apk add --no-cache libusb=1.0.27-r0 ca-certificates tzdata \
  && addgroup -S mfi && adduser -S -G mfi -H -s /sbin/nologin mfi
-COPY --from=build /out/remote-mfi /usr/local/bin/remote-mfi
+COPY --from=build /out/remote-mfi-for-xcertplay /usr/local/bin/remote-mfi-for-xcertplay
 
 USER mfi
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
   CMD wget -q -O- http://127.0.0.1:8080/healthz | grep -q '"ok":true' || exit 1
-ENTRYPOINT ["/usr/local/bin/remote-mfi"]
+ENTRYPOINT ["/usr/local/bin/remote-mfi-for-xcertplay"]
 ```
 
 ### 2.3 构建 & 推送
 
 ```sh
 # 本地只构建当前宿主架构,无需 QEMU
-docker buildx build -t remote-mfi:dev --load .
+docker buildx build -t remote-mfi-for-xcertplay:dev --load .
 ```
 
 正式发布由 `.github/workflows/release.yml` 执行:
 1. amd64 runner 推送 amd64 digest
 2. arm64 runner 推送 arm64 digest
-3. merge job 用 `imagetools create` 生成 `v0.1.1` 与 `latest` manifest
+3. merge job 用 `imagetools create` 生成 `v0.2.0` 与 `latest` manifest
 
 ### 2.4 镜像 manifest 验证
 ```sh
-docker buildx imagetools inspect ghcr.io/cuckoohello/remote-mfi:v0.1.1
+docker buildx imagetools inspect ghcr.io/cuckoohello/remote-mfi-for-xcertplay:v0.2.0
 # 期望输出含 linux/amd64 + linux/arm64 两个 sub-image
 ```
 
 ### 2.5 单架构镜像大小自检
 ```sh
-docker image ls remote-mfi:dev
+docker image ls remote-mfi-for-xcertplay:dev
 # 期望: SIZE ≤ 40MB (每架构独立)
 ```
 
@@ -145,10 +145,10 @@ docker image ls remote-mfi:dev
 
 | tarball | 目标平台 | 兼容宿主机 | libc |
 | --- | --- | --- | --- |
-| `remote-mfi_v0.1.1_linux_amd64_glibc.tar.gz` | linux/amd64 | Ubuntu 22.04+, Debian 12+ | glibc ≥ 2.35 |
-| `remote-mfi_v0.1.1_linux_amd64_musl.tar.gz`  | linux/amd64 | Alpine 3.16+ | musl |
-| `remote-mfi_v0.1.1_linux_arm64_glibc.tar.gz` | linux/arm64 | Ubuntu 22.04+ arm64, Debian 12+ arm64, Raspberry Pi OS Bookworm 64-bit | glibc ≥ 2.35 |
-| `remote-mfi_v0.1.1_linux_arm64_musl.tar.gz`  | linux/arm64 | Alpine 3.16+ arm64 | musl |
+| `remote-mfi-for-xcertplay_v0.2.0_linux_amd64_glibc.tar.gz` | linux/amd64 | Ubuntu 22.04+, Debian 12+ | glibc ≥ 2.35 |
+| `remote-mfi-for-xcertplay_v0.2.0_linux_amd64_musl.tar.gz`  | linux/amd64 | Alpine 3.16+ | musl |
+| `remote-mfi-for-xcertplay_v0.2.0_linux_arm64_glibc.tar.gz` | linux/arm64 | Ubuntu 22.04+ arm64, Debian 12+ arm64, Raspberry Pi OS Bookworm 64-bit | glibc ≥ 2.35 |
+| `remote-mfi-for-xcertplay_v0.2.0_linux_arm64_musl.tar.gz`  | linux/arm64 | Alpine 3.16+ arm64 | musl |
 
 **构建方式**:
 - glibc: 使用 GitHub 原生 `ubuntu-22.04` / `ubuntu-22.04-arm` runner，直接安装 libusb headers 后编译
@@ -160,7 +160,7 @@ docker image ls remote-mfi:dev
 sudo apt-get update
 sudo apt-get install -y libusb-1.0-0-dev pkg-config
 CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" \
-  -o dist/linux_amd64_glibc/remote-mfi ./cmd/remote-mfi
+  -o dist/linux_amd64_glibc/remote-mfi-for-xcertplay ./cmd/remote-mfi-for-xcertplay
 
 # musl/amd64: 在 ubuntu-22.04 runner 上
 docker run --rm \
@@ -168,7 +168,7 @@ docker run --rm \
   golang:1.23-alpine3.20 \
   sh -c 'apk add --no-cache build-base pkgconfig libusb-dev && \
     CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" \
-    -o /src/dist/linux_amd64_musl/remote-mfi ./cmd/remote-mfi'
+    -o /src/dist/linux_amd64_musl/remote-mfi-for-xcertplay ./cmd/remote-mfi-for-xcertplay'
 
 # arm64 变体在 ubuntu-22.04-arm runner 上执行相同命令
 ```
@@ -176,19 +176,19 @@ docker run --rm \
 产物打包:
 ```sh
 cd dist/linux_amd64_glibc && \
-  tar czf ../remote-mfi_v0.1.1_linux_amd64_glibc.tar.gz remote-mfi README.md README.zh-CN.md LICENSE
+  tar czf ../remote-mfi-for-xcertplay_v0.2.0_linux_amd64_glibc.tar.gz remote-mfi-for-xcertplay README.md README.zh-CN.md LICENSE
 ```
 
 **产物内容**(tarball 展开后):
-- `remote-mfi` — 单文件 binary,动态链接 libusb-1.0
+- `remote-mfi-for-xcertplay` — 单文件 binary,动态链接 libusb-1.0
 - `README.md` / `README.zh-CN.md` — 中英文快速起步(含 libusb 装法 + udev 规则 + 启动示例)
 - `LICENSE`
 
 ### 2.7 GitHub Releases 发布规范
 
-- Tag: `v0.1.1`(语义化版本)
+- Tag: `v0.2.0`(语义化版本)
 - 附件: 4 个 tarball + 4 个 SHA256 校验文件(`.tar.gz.sha256`)
-- 镜像 tag: `ghcr.io/cuckoohello/remote-mfi:v0.1.1` + `:latest`(仅 Release 时 latest 才动)
+- 镜像 tag: `ghcr.io/cuckoohello/remote-mfi-for-xcertplay:v0.2.0` + `:latest`(仅 Release 时 latest 才动)
 - Release notes: 引用本仓库 `docs/` 内文档族版本(v5.x)
 
 ---
@@ -201,7 +201,7 @@ cd dist/linux_amd64_glibc && \
 USB_GID="$(getent group plugdev | cut -d: -f3)"
 
 docker run -d \
-  --name remote-mfi \
+  --name remote-mfi-for-xcertplay \
   --restart unless-stopped \
   -p 8080:8080 \
   -e MFI_BEARER_TOKEN='REPLACE_ME_LONG_RANDOM_STRING' \
@@ -210,7 +210,7 @@ docker run -d \
   --device-cgroup-rule='c 189:* rmw' \
   -v /dev/bus/usb:/dev/bus/usb \
   --group-add "$USB_GID" \
-  ghcr.io/cuckoohello/remote-mfi:v0.1.1
+  ghcr.io/cuckoohello/remote-mfi-for-xcertplay:v0.2.0
 ```
 
 ### 3.2 精确设备版 (推荐, 但 BUS/DEVICE 会随拔插变)
@@ -226,13 +226,13 @@ Bus 001 Device 007: ID 1a86:5512 QinHeng Electronics ...
 USB_GID="$(getent group plugdev | cut -d: -f3)"
 
 docker run -d \
-  --name remote-mfi \
+  --name remote-mfi-for-xcertplay \
   --restart unless-stopped \
   -p 8080:8080 \
   -e MFI_BEARER_TOKEN='REPLACE_ME_LONG_RANDOM_STRING' \
   --device=/dev/bus/usb/001/007 \
   --group-add "$USB_GID" \
-  ghcr.io/cuckoohello/remote-mfi:v0.1.1
+  ghcr.io/cuckoohello/remote-mfi-for-xcertplay:v0.2.0
 ```
 
 ⚠️ 拔插 USB 后 Device 编号可能变,需重启容器或改回 `-v /dev/bus/usb:/dev/bus/usb`。
@@ -242,12 +242,12 @@ docker run -d \
 ```sh
 USB_GID="$(getent group plugdev | cut -d: -f3)"
 
-docker run -d --name remote-mfi \
+docker run -d --name remote-mfi-for-xcertplay \
   -p 127.0.0.1:8080:8080 \      # 仅 loopback
   --device-cgroup-rule='c 189:* rmw' \
   -v /dev/bus/usb:/dev/bus/usb \
   --group-add "$USB_GID" \
-  ghcr.io/cuckoohello/remote-mfi:v0.1.1
+  ghcr.io/cuckoohello/remote-mfi-for-xcertplay:v0.2.0
 # MFI_BEARER_TOKEN 未设 → 启动日志会 WARN 一行 "authentication disabled"
 ```
 
@@ -263,21 +263,21 @@ uname -m                                           # x86_64 或 aarch64
 ldd --version 2>&1 | head -1                       # glibc 或 musl
 
 # 2. 假设是 amd64 + glibc:
-curl -LO https://github.com/cuckoohello/remote-mfi/releases/download/v0.1.1/remote-mfi_v0.1.1_linux_amd64_glibc.tar.gz
-curl -LO https://github.com/cuckoohello/remote-mfi/releases/download/v0.1.1/remote-mfi_v0.1.1_linux_amd64_glibc.tar.gz.sha256
+curl -LO https://github.com/cuckoohello/remote-mfi-for-xcertplay/releases/download/v0.2.0/remote-mfi-for-xcertplay_v0.2.0_linux_amd64_glibc.tar.gz
+curl -LO https://github.com/cuckoohello/remote-mfi-for-xcertplay/releases/download/v0.2.0/remote-mfi-for-xcertplay_v0.2.0_linux_amd64_glibc.tar.gz.sha256
 
 # 3. 校验
-sha256sum -c remote-mfi_v0.1.1_linux_amd64_glibc.tar.gz.sha256
+sha256sum -c remote-mfi-for-xcertplay_v0.2.0_linux_amd64_glibc.tar.gz.sha256
 
 # 4. 展开
-tar xzf remote-mfi_v0.1.1_linux_amd64_glibc.tar.gz
-sudo mv remote-mfi /usr/local/bin/
-sudo chmod +x /usr/local/bin/remote-mfi
+tar xzf remote-mfi-for-xcertplay_v0.2.0_linux_amd64_glibc.tar.gz
+sudo mv remote-mfi-for-xcertplay /usr/local/bin/
+sudo chmod +x /usr/local/bin/remote-mfi-for-xcertplay
 ```
 
 #### 3.4.2 前置依赖(**用户自装**)
 - **libusb-1.0**:见 [1.1 前置清单](#1-部署前置人工单) 各发行版对应包名
-- **udev 规则**:同 [1.2](#12-udev-规则-仅一次),但把 `GROUP=plugdev` 换成运行 `remote-mfi` 的用户所在组
+- **udev 规则**:同 [1.2](#12-udev-规则-仅一次),但把 `GROUP=plugdev` 换成运行 `remote-mfi-for-xcertplay` 的用户所在组
 - **用户权限**:运行用户必须能访问 `/dev/bus/usb/**`,或者加入 plugdev 组:
   ```sh
   sudo usermod -aG plugdev $USER
@@ -290,7 +290,7 @@ export MFI_BEARER_TOKEN='REPLACE_ME_LONG_RANDOM_STRING'
 export MFI_CH341_USB_IDS='1a86:5512'
 export MFI_LOG_LEVEL=info
 export TZ=Asia/Shanghai
-remote-mfi
+remote-mfi-for-xcertplay
 ```
 观察日志无 error 后, Ctrl+C 停止。
 
@@ -299,7 +299,7 @@ remote-mfi
 本项目**不交付** systemd unit 模板 —— 每台机器的用户/组/日志路径不同,统一模板反而添乱。参考实现:
 
 ```ini
-# /etc/systemd/system/remote-mfi.service
+# /etc/systemd/system/remote-mfi-for-xcertplay.service
 [Unit]
 Description=Remote MFi Authentication Service
 After=network.target
@@ -312,7 +312,7 @@ Environment=MFI_BEARER_TOKEN=REPLACE_ME
 Environment=MFI_CH341_USB_IDS=1a86:5512
 Environment=MFI_LOG_LEVEL=info
 Environment=TZ=Asia/Shanghai
-ExecStart=/usr/local/bin/remote-mfi
+ExecStart=/usr/local/bin/remote-mfi-for-xcertplay
 Restart=on-failure
 RestartSec=5s
 StandardOutput=journal
@@ -324,8 +324,8 @@ WantedBy=multi-user.target
 启用:
 ```sh
 sudo systemctl daemon-reload
-sudo systemctl enable --now remote-mfi
-sudo journalctl -u remote-mfi -f
+sudo systemctl enable --now remote-mfi-for-xcertplay
+sudo journalctl -u remote-mfi-for-xcertplay -f
 ```
 
 #### 3.4.5 宿主机形态的差异汇总
@@ -385,7 +385,7 @@ sudo journalctl -u remote-mfi -f
 | libusb 版本 | (未 pin) | `pin =1.0.27-r0` | 防止 apk 升级触发 ABI 不兼容 | Alpine 版本升级时需同步验证 |
 | `/mfi/reset` 服务端语义 | 清幂等缓存 + 释放"最近成功"标记 | **纯 no-op** (v5.1) | 多头单共享部署下清缓存会误伤别的头单等待重试的 requestId,触发芯片重复签名 | 幂等缓存仅靠 60s TTL 过期;reset 变得与所有端点并发安全,可从"未定义行为"降级为"常规路径" |
 | healthz `chip.status` 枚举 | v5.1: `ready/busy/missing/error` (4 态, 含时间启发式) | v5.2: **`ready/missing/error` (3 态)**, 仅基于当前 libusb 枚举 | `busy` 混淆"忙碌 ≠ 不健康"会触发 Docker 自动重启;"30s 成功启发式"在拔芯片后无请求时会滞留 ready | HEALTHCHECK 更精确;`/debug/usb` 与 healthz 使用同一次枚举,数据不发散 |
-| 锁层级契约 | (未明文) | v5.2 明确 3 把锁(chipMutex / cacheMutex / recentMutex)禁止两两嵌套 | 避免死锁 / 优先级反转,让 `-race` 测试有明确 pass/fail 判据 | 见 [01-requirements.md#5.5](./01-requirements.md#55-锁层级契约v52-新增) |
+| 锁层级契约 | v5.2 初稿只列 3 把业务锁 | v5.4 按实现明确 `chipGate → cacheMutex` 与 `chipGate → ioMu → sessionMu`;recentMutex 不嵌套 | 双重检查缓存和 libusb session 管理需要固定的单向嵌套顺序 | 见 [01-requirements.md#5.5](./01-requirements.md#55-锁层级契约v52-新增) |
 | Recent Requests `note=cached` | v5.1: `cached` | v5.2: **`idempotent-hit`** (更名) | 原名让读者误以为证书也有缓存,与 v5"不缓存证书"矛盾 | 语义收敛到 sign 专属;文档不再需要额外脚注 |
 | 时间戳时区 | v5.1: UTC | v5.2: **容器本地时区 + ISO 8601 offset** | 运维现场读 UTC 需心里换算 CST,易错 | `TZ` 环境变量控制,默认 `Asia/Shanghai` |
 | 冷启动指标 | v5.1: "冷启动到 /healthz 就绪 ≤ 2s"(定义模糊) | v5.2: **拆两条** — "HTTP 端口 accept ≤ 2s" + "healthz 返 ready ≤ 3s" | 原表述"就绪"未定义指端口还是芯片就绪 | 验收明确 |
@@ -394,9 +394,11 @@ sudo journalctl -u remote-mfi -f
 | 交付形态 | v5.2: 仅 Docker 镜像 (Alpine) | v5.3: **Docker (multi-arch amd64/arm64, GHCR) + 宿主机 binary (4 变体 amd64/arm64 × glibc/musl, GitHub Releases)** | 实际部署包括嵌入式盒子/树莓派等无 Docker 场景 | Runbook 分 Docker/宿主机两种流程;镜像必须走 buildx;binary 需 4 份 tarball + sha256 |
 | CPU 架构支持 | (未明说) | v5.3: **linux/amd64 + linux/arm64**(**不支持 armv7**) | 覆盖服务器 + 树莓派 64-bit; armv7 已过时且用户群小 | 使用 GitHub 原生 x64/arm64 runner,不引入 QEMU |
 | libusb 链接方式 | v5.2: Alpine 镜像内装 | v5.3: **动态链接** (Docker 内 apk / 宿主机 apt/dnf/apk) | 静态链接 cgo+musl 复杂度高;动态更简洁 | 宿主机形态用户需自装 libusb-1.0 |
-| 镜像 registry | (未指定) | **GHCR** (`ghcr.io/cuckoohello/remote-mfi`) | 与 GitHub Actions 集成,公开仓库无速率限制 | 客户端 `docker pull` 无需登录 |
+| 镜像 registry | (未指定) | **GHCR** (`ghcr.io/cuckoohello/remote-mfi-for-xcertplay`) | 与 GitHub Actions 集成,公开仓库无速率限制 | 客户端 `docker pull` 无需登录 |
 | 宿主机形态交付 | (无) | v5.3: 仅 **binary + 中英文 README + LICENSE** tarball,**不含** systemd unit / udev rules / install.sh | 各发行版差异大,统一模板反而添乱 | Runbook §3.4 给出参考 systemd unit,但由用户自建 |
 | 构建执行架构 | 单个 amd64 runner + Docker/QEMU | **GitHub 原生 `ubuntu-22.04` / `ubuntu-22.04-arm` runners** | 两次 glibc container jobs 失败；GitHub 已为公开仓库提供标准 arm64 runner | Docker、glibc、musl 全部在目标 CPU 上原生编译；glibc 基线 2.35 |
+| 项目名称 | `remote-mfi` | **`remote-mfi-for-xcertplay`** | 明确服务只面向 xcertplay 协议与使用场景 | GitHub 仓库、Go module、binary、GHCR、artifact、页面标题全部改名；`/mfi/*` 与 `MFI_*` 保持兼容 |
+| 项目状态 | 未声明 | **Experimental / 未完成实体硬件验证** | CH341/MFi 设备仍在运输途中，不能把 CI/fake 测试表述为真实硬件通过 | README/Overview 明示；后续验收 Merlin 路由器与群晖 Docker |
 
 ---
 
@@ -439,7 +441,7 @@ curl -s -H "Accept: application/json" \
 
 | 现象 | 立即动作 | 取证 |
 | --- | --- | --- |
-| 启动后 30s 内 `/healthz` 从未返回 `chip:"ready"` | 停容器 (不要 restart 循环掩盖) | `docker logs remote-mfi`, `lsusb`, `dmesg`, `/debug/usb` HTML 截图 |
+| 启动后 30s 内 `/healthz` 从未返回 `chip:"ready"` | 停容器 (不要 restart 循环掩盖) | `docker logs remote-mfi-for-xcertplay`, `lsusb`, `dmesg`, `/debug/usb` HTML 截图 |
 | `chipMutex` 持续持有 > 60s | 停容器 | 保留最近 5 条 op 日志 + goroutine dump (若已开 pprof) |
 | 出现 `panic:` 或 `data race:` | 停容器 | 完整 log,`GORACE=1` 复现 |
 | USB device 名字变了但服务未感知 | 停容器 | 检查是否用了精确 `--device=`;改用 `-v /dev/bus/usb:/dev/bus/usb` |
@@ -453,20 +455,20 @@ curl -s -H "Accept: application/json" \
 ### 8.1 镜像回滚
 ```sh
 # 前提: 上一版镜像 tag 保留 (推荐每次 tag 语义版本)
-docker stop remote-mfi && docker rm remote-mfi
-docker run -d --name remote-mfi <相同参数> remote-mfi:0.0.9
+docker stop remote-mfi-for-xcertplay && docker rm remote-mfi-for-xcertplay
+docker run -d --name remote-mfi-for-xcertplay <相同参数> remote-mfi-for-xcertplay:0.0.9
 ```
 **验证**: `curl http://localhost:8080/healthz` 返回 `chip:"ready"`。
 
 ### 8.2 完全下线 (紧急)
 ```sh
-docker stop remote-mfi && docker rm remote-mfi
+docker stop remote-mfi-for-xcertplay && docker rm remote-mfi-for-xcertplay
 # 下游客户端会立刻走 IOException 分支,建议同时通知上游改回本地 MFi
 ```
 
 ### 8.3 配置回滚 (仅环境变量)
 ```sh
-docker stop remote-mfi && docker rm remote-mfi
+docker stop remote-mfi-for-xcertplay && docker rm remote-mfi-for-xcertplay
 # 用旧的环境变量重新 docker run,不需要改镜像
 ```
 
@@ -490,18 +492,18 @@ sudo udevadm trigger --subsystem-match=usb
 
 ### 9.1 容器内看 USB
 ```sh
-docker exec -it remote-mfi sh -c 'ls /dev/bus/usb/*/'
+docker exec -it remote-mfi-for-xcertplay sh -c 'ls /dev/bus/usb/*/'
 ```
 
 ### 9.2 抓一次完整交易 (debug 日志)
 ```sh
-docker stop remote-mfi
-docker run --rm -it -e MFI_LOG_LEVEL=debug ... ghcr.io/cuckoohello/remote-mfi:v0.1.1
+docker stop remote-mfi-for-xcertplay
+docker run --rm -it -e MFI_LOG_LEVEL=debug ... ghcr.io/cuckoohello/remote-mfi-for-xcertplay:v0.2.0
 # 触发一次客户端 sign, 观察 event=chip_tx / chip_rx
 ```
 
 ### 9.3 排查权限
 ```sh
-docker exec -it remote-mfi id
+docker exec -it remote-mfi-for-xcertplay id
 # 期望: uid=xxx(mfi) gid=xxx(mfi) groups=xxx(mfi),plugdev
 ```

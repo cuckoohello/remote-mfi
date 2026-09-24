@@ -1,8 +1,12 @@
-# remote-mfi
+# remote-mfi-for-xcertplay
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-`remote-mfi` exposes a physical MFi authentication coprocessor connected through a CH341 USB-I2C bridge as the HTTP API consumed by [shilapi/xcertplay](https://github.com/shilapi/xcertplay).
+> **Status: experimental and not hardware-validated.**
+>
+> The physical CH341/MFi device is still in transit. Unit tests, race tests, HTTP contract tests, CI builds, and no-device startup behavior are verified, but real MFi signing and CarPlay `AA05 AuthenticationSucceeded` have not yet been tested. Planned deployment validation targets are Asuswrt-Merlin routers and Synology Container Manager (Docker).
+
+`remote-mfi-for-xcertplay` exposes a physical MFi authentication coprocessor connected through a CH341 USB-I2C bridge as the HTTP API consumed by [shilapi/xcertplay](https://github.com/shilapi/xcertplay).
 
 The service runs on Linux `amd64` and `arm64`, either as a multi-architecture Docker image or as a dynamically linked host binary.
 
@@ -47,7 +51,7 @@ sudo udevadm trigger --subsystem-match=usb
 The public multi-architecture image is published to GHCR:
 
 ```sh
-docker pull ghcr.io/cuckoohello/remote-mfi:v0.1.1
+docker pull ghcr.io/cuckoohello/remote-mfi-for-xcertplay:v0.2.0
 ```
 
 For hotplug support, bind the USB bus and allow USB character-device major `189`. Pass the host `plugdev` numeric GID to the non-root container process:
@@ -56,7 +60,7 @@ For hotplug support, bind the USB bus and allow USB character-device major `189`
 USB_GID="$(getent group plugdev | cut -d: -f3)"
 
 docker run -d \
-  --name remote-mfi \
+  --name remote-mfi-for-xcertplay \
   --restart unless-stopped \
   -p 8080:8080 \
   -e MFI_BEARER_TOKEN='replace-with-a-long-random-token' \
@@ -64,7 +68,7 @@ docker run -d \
   --device-cgroup-rule='c 189:* rmw' \
   --group-add "$USB_GID" \
   -v /dev/bus/usb:/dev/bus/usb \
-  ghcr.io/cuckoohello/remote-mfi:v0.1.1
+  ghcr.io/cuckoohello/remote-mfi-for-xcertplay:v0.2.0
 ```
 
 `MFI_BEARER_TOKEN` is optional. When omitted, `/mfi/*` and `/debug/usb` are unauthenticated; use that mode only on an isolated network or loopback interface. `/healthz` is always unauthenticated.
@@ -102,10 +106,10 @@ export MFI_BEARER_TOKEN='replace-with-a-long-random-token'
 export MFI_CH341_USB_IDS='1a86:5512'
 export MFI_MFI_I2C_ADDRESS='0x11'
 export MFI_CH341_I2C_SPEED_KHZ='100'
-remote-mfi
+remote-mfi-for-xcertplay
 ```
 
-Host binaries are dynamically linked. Use `ldd ./remote-mfi` to confirm that the selected artifact matches the host libc and resolves `libusb-1.0.so.0`.
+Host binaries are dynamically linked. Use `ldd ./remote-mfi-for-xcertplay` to confirm that the selected artifact matches the host libc and resolves `libusb-1.0.so.0`.
 
 ## Configuration
 
@@ -127,7 +131,7 @@ Install Go 1.23+, a C toolchain, `pkg-config`, and libusb development headers.
 ```sh
 make check
 make build
-./remote-mfi --version
+./remote-mfi-for-xcertplay --version
 ```
 
 `make check` runs unit tests, the race detector, and `go vet`. Tests use scripted transports and do not require USB hardware. CH341 integration and real CarPlay `AA05 AuthenticationSucceeded` acceptance still require physical hardware.

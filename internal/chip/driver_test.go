@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cuckoohello/remote-mfi/internal/transport"
+	"github.com/cuckoohello/remote-mfi-for-xcertplay/internal/transport"
 )
 
 func TestReadCertificateUsesIncrementing128ByteWindows(t *testing.T) {
