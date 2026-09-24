@@ -47,7 +47,7 @@ sudo udevadm trigger --subsystem-match=usb
 The public multi-architecture image is published to GHCR:
 
 ```sh
-docker pull ghcr.io/cuckoohello/remote-mfi:v0.1.0
+docker pull ghcr.io/cuckoohello/remote-mfi:v0.1.1
 ```
 
 For hotplug support, bind the USB bus and allow USB character-device major `189`. Pass the host `plugdev` numeric GID to the non-root container process:
@@ -64,7 +64,7 @@ docker run -d \
   --device-cgroup-rule='c 189:* rmw' \
   --group-add "$USB_GID" \
   -v /dev/bus/usb:/dev/bus/usb \
-  ghcr.io/cuckoohello/remote-mfi:v0.1.0
+  ghcr.io/cuckoohello/remote-mfi:v0.1.1
 ```
 
 `MFI_BEARER_TOKEN` is optional. When omitted, `/mfi/*` and `/debug/usb` are unauthenticated; use that mode only on an isolated network or loopback interface. `/healthz` is always unauthenticated.
@@ -79,6 +79,8 @@ Choose the GitHub Release archive matching both CPU architecture and libc:
 - `linux_amd64_musl`
 - `linux_arm64_glibc`
 - `linux_arm64_musl`
+
+The glibc artifacts are built on Debian 12 and require glibc 2.36 or newer.
 
 Install the runtime dependency:
 

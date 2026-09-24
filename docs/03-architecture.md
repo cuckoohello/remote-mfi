@@ -372,7 +372,7 @@ GitHub Actions (workflow: release.yml, 由 tag v* 触发)
 **签名策略**(暂缓,记入开放问题):
 - cosign 对镜像签名?
 - Release 附件是否 gpg 签名?
-- v0.1.0 先不做,记 [06-open-questions.md#o3-supply-chain-signing](./06-open-questions.md#o3-supply-chain-signing) 里。
+- v0.1.1 先不做,记 [06-open-questions.md#o3-supply-chain-signing](./06-open-questions.md#o3-supply-chain-signing) 里。
 
 ---
 

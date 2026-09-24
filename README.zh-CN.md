@@ -47,7 +47,7 @@ sudo udevadm trigger --subsystem-match=usb
 公开的多架构镜像发布在 GHCR：
 
 ```sh
-docker pull ghcr.io/cuckoohello/remote-mfi:v0.1.0
+docker pull ghcr.io/cuckoohello/remote-mfi:v0.1.1
 ```
 
 为了支持 USB 热插拔，需要挂载整个 USB bus，并放行 USB 字符设备主设备号 `189`。容器以非 root 用户运行，因此还要传入宿主机 `plugdev` 的数字 GID：
@@ -64,7 +64,7 @@ docker run -d \
   --device-cgroup-rule='c 189:* rmw' \
   --group-add "$USB_GID" \
   -v /dev/bus/usb:/dev/bus/usb \
-  ghcr.io/cuckoohello/remote-mfi:v0.1.0
+  ghcr.io/cuckoohello/remote-mfi:v0.1.1
 ```
 
 `MFI_BEARER_TOKEN` 是可选项。未设置时，`/mfi/*` 和 `/debug/usb` 均不鉴权，只应在隔离网络或仅监听 loopback 时使用。`/healthz` 始终不鉴权。
@@ -79,6 +79,8 @@ docker run -d \
 - `linux_amd64_musl`
 - `linux_arm64_glibc`
 - `linux_arm64_musl`
+
+glibc 产物基于 Debian 12 构建，要求宿主机 glibc 2.36 或更高版本。
 
 安装运行时依赖：
 

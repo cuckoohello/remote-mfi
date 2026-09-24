@@ -55,11 +55,11 @@ jobs:
           - arch: amd64
             platform: linux/amd64
             libc: glibc
-            image: golang:1.23-bullseye
+            image: golang:1.23-bookworm
           - arch: arm64
             platform: linux/arm64
             libc: glibc
-            image: golang:1.23-bullseye
+            image: golang:1.23-bookworm
           - arch: amd64
             platform: linux/amd64
             libc: musl

@@ -200,7 +200,7 @@
 ## N. v5.3 多形态 & 多架构
 
 ### N.1 Docker 镜像 (multi-arch)
-- [ ] N1. `docker buildx imagetools inspect ghcr.io/cuckoohello/remote-mfi:v0.1.0` 显示 **`linux/amd64` + `linux/arm64`** 两个 sub-image
+- [ ] N1. `docker buildx imagetools inspect ghcr.io/cuckoohello/remote-mfi:v0.1.1` 显示 **`linux/amd64` + `linux/arm64`** 两个 sub-image
 - [ ] N2. amd64 宿主机上 `docker pull` 后 `docker image inspect` 显示 `Architecture: amd64`,arm64 宿主机上 `arm64`
 - [ ] N3. 两架构镜像各自 SIZE ≤ 40MB
 - [ ] N4. `docker run --pull=always ghcr.io/cuckoohello/remote-mfi:latest` **匿名可拉**(公开仓库)
@@ -228,7 +228,7 @@
 - [ ] N20. 系统重启后 unit 自动拉起 (`WantedBy=multi-user.target` 生效)
 
 ### N.5 交付一致性
-- [ ] N21. 同一 tag(如 `v0.1.0`)的 Docker 镜像 sub-image 与 tarball binary **来自同一 git commit**(Release notes 显式引用 commit SHA)
+- [ ] N21. 同一 tag(如 `v0.1.1`)的 Docker 镜像 sub-image 与 tarball binary **来自同一 git commit**(Release notes 显式引用 commit SHA)
 - [ ] N22. Docker 镜像的 `remote-mfi --version`(如实现)输出与 GitHub Release tag 一致
 - [ ] N23. GHCR 上 `latest` tag 只指向最新稳定 release, 不指向 pre-release
 

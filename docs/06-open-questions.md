@@ -41,7 +41,7 @@ chipGate → transport.ioMu → transport.sessionMu
 - Release 附件 GPG 签名
 - SBOM (syft/CycloneDX)
 
-**触发**: 项目开始接入生产环境,或者上游用户明确要求可验证性。v0.1.0 阶段不做。
+**触发**: 项目开始接入生产环境,或者上游用户明确要求可验证性。v0.1.x 阶段不做。
 
 **当被触发时的行动**:
 1. GitHub Actions 加 `sigstore/cosign-installer` + `cosign sign`

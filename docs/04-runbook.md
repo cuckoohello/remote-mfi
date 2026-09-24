@@ -126,7 +126,7 @@ docker buildx inspect --bootstrap
 # 多架构 build & push 到 GHCR(推荐:CI 走此路径)
 docker buildx build \
   --platform=linux/amd64,linux/arm64 \
-  -t ghcr.io/cuckoohello/remote-mfi:v0.1.0 \
+  -t ghcr.io/cuckoohello/remote-mfi:v0.1.1 \
   -t ghcr.io/cuckoohello/remote-mfi:latest \
   --push .
 
@@ -136,7 +136,7 @@ docker buildx build --platform=linux/amd64 -t remote-mfi:dev --load .
 
 ### 2.4 镜像 manifest 验证
 ```sh
-docker buildx imagetools inspect ghcr.io/cuckoohello/remote-mfi:v0.1.0
+docker buildx imagetools inspect ghcr.io/cuckoohello/remote-mfi:v0.1.1
 # 期望输出含 linux/amd64 + linux/arm64 两个 sub-image
 ```
 
@@ -152,10 +152,10 @@ docker image ls remote-mfi:dev
 
 | tarball | 目标平台 | 兼容宿主机 | libc |
 | --- | --- | --- | --- |
-| `remote-mfi_v0.1.0_linux_amd64_glibc.tar.gz` | linux/amd64 | Debian 11+, Ubuntu 20.04+, RHEL 8+ | glibc ≥ 2.31 |
-| `remote-mfi_v0.1.0_linux_amd64_musl.tar.gz`  | linux/amd64 | Alpine 3.16+ | musl |
-| `remote-mfi_v0.1.0_linux_arm64_glibc.tar.gz` | linux/arm64 | Debian 11+ arm64, 树莓派 OS 64-bit | glibc ≥ 2.31 |
-| `remote-mfi_v0.1.0_linux_arm64_musl.tar.gz`  | linux/arm64 | Alpine 3.16+ arm64 | musl |
+| `remote-mfi_v0.1.1_linux_amd64_glibc.tar.gz` | linux/amd64 | Debian 12+, Ubuntu 24.04+ | glibc ≥ 2.36 |
+| `remote-mfi_v0.1.1_linux_amd64_musl.tar.gz`  | linux/amd64 | Alpine 3.16+ | musl |
+| `remote-mfi_v0.1.1_linux_arm64_glibc.tar.gz` | linux/arm64 | Debian 12+ arm64, Raspberry Pi OS Bookworm 64-bit | glibc ≥ 2.36 |
+| `remote-mfi_v0.1.1_linux_arm64_musl.tar.gz`  | linux/arm64 | Alpine 3.16+ arm64 | musl |
 
 **构建方式**(在 CI 里用 Docker 容器 native 编 → `docker cp` 出产物 → 打 tarball):
 
@@ -182,7 +182,7 @@ docker run --rm --platform=linux/amd64 \
 产物打包:
 ```sh
 cd dist/linux_amd64_glibc && \
-  tar czf ../remote-mfi_v0.1.0_linux_amd64_glibc.tar.gz remote-mfi README.md README.zh-CN.md LICENSE
+  tar czf ../remote-mfi_v0.1.1_linux_amd64_glibc.tar.gz remote-mfi README.md README.zh-CN.md LICENSE
 ```
 
 **产物内容**(tarball 展开后):
@@ -192,9 +192,9 @@ cd dist/linux_amd64_glibc && \
 
 ### 2.7 GitHub Releases 发布规范
 
-- Tag: `v0.1.0`(语义化版本)
+- Tag: `v0.1.1`(语义化版本)
 - 附件: 4 个 tarball + 4 个 SHA256 校验文件(`.tar.gz.sha256`)
-- 镜像 tag: `ghcr.io/cuckoohello/remote-mfi:v0.1.0` + `:latest`(仅 Release 时 latest 才动)
+- 镜像 tag: `ghcr.io/cuckoohello/remote-mfi:v0.1.1` + `:latest`(仅 Release 时 latest 才动)
 - Release notes: 引用本仓库 `docs/` 内文档族版本(v5.x)
 
 ---
@@ -216,7 +216,7 @@ docker run -d \
   --device-cgroup-rule='c 189:* rmw' \
   -v /dev/bus/usb:/dev/bus/usb \
   --group-add "$USB_GID" \
-  ghcr.io/cuckoohello/remote-mfi:v0.1.0
+  ghcr.io/cuckoohello/remote-mfi:v0.1.1
 ```
 
 ### 3.2 精确设备版 (推荐, 但 BUS/DEVICE 会随拔插变)
@@ -238,7 +238,7 @@ docker run -d \
   -e MFI_BEARER_TOKEN='REPLACE_ME_LONG_RANDOM_STRING' \
   --device=/dev/bus/usb/001/007 \
   --group-add "$USB_GID" \
-  ghcr.io/cuckoohello/remote-mfi:v0.1.0
+  ghcr.io/cuckoohello/remote-mfi:v0.1.1
 ```
 
 ⚠️ 拔插 USB 后 Device 编号可能变,需重启容器或改回 `-v /dev/bus/usb:/dev/bus/usb`。
@@ -253,7 +253,7 @@ docker run -d --name remote-mfi \
   --device-cgroup-rule='c 189:* rmw' \
   -v /dev/bus/usb:/dev/bus/usb \
   --group-add "$USB_GID" \
-  ghcr.io/cuckoohello/remote-mfi:v0.1.0
+  ghcr.io/cuckoohello/remote-mfi:v0.1.1
 # MFI_BEARER_TOKEN 未设 → 启动日志会 WARN 一行 "authentication disabled"
 ```
 
@@ -269,14 +269,14 @@ uname -m                                           # x86_64 或 aarch64
 ldd --version 2>&1 | head -1                       # glibc 或 musl
 
 # 2. 假设是 amd64 + glibc:
-curl -LO https://github.com/cuckoohello/remote-mfi/releases/download/v0.1.0/remote-mfi_v0.1.0_linux_amd64_glibc.tar.gz
-curl -LO https://github.com/cuckoohello/remote-mfi/releases/download/v0.1.0/remote-mfi_v0.1.0_linux_amd64_glibc.tar.gz.sha256
+curl -LO https://github.com/cuckoohello/remote-mfi/releases/download/v0.1.1/remote-mfi_v0.1.1_linux_amd64_glibc.tar.gz
+curl -LO https://github.com/cuckoohello/remote-mfi/releases/download/v0.1.1/remote-mfi_v0.1.1_linux_amd64_glibc.tar.gz.sha256
 
 # 3. 校验
-sha256sum -c remote-mfi_v0.1.0_linux_amd64_glibc.tar.gz.sha256
+sha256sum -c remote-mfi_v0.1.1_linux_amd64_glibc.tar.gz.sha256
 
 # 4. 展开
-tar xzf remote-mfi_v0.1.0_linux_amd64_glibc.tar.gz
+tar xzf remote-mfi_v0.1.1_linux_amd64_glibc.tar.gz
 sudo mv remote-mfi /usr/local/bin/
 sudo chmod +x /usr/local/bin/remote-mfi
 ```
@@ -401,7 +401,8 @@ sudo journalctl -u remote-mfi -f
 | CPU 架构支持 | (未明说) | v5.3: **linux/amd64 + linux/arm64**(**不支持 armv7**) | 覆盖服务器 + 树莓派 64-bit; armv7 已过时且用户群小 | 构建矩阵翻倍;测试需 QEMU emulate arm64 |
 | libusb 链接方式 | v5.2: Alpine 镜像内装 | v5.3: **动态链接** (Docker 内 apk / 宿主机 apt/dnf/apk) | 静态链接 cgo+musl 复杂度高;动态更简洁 | 宿主机形态用户需自装 libusb-1.0 |
 | 镜像 registry | (未指定) | **GHCR** (`ghcr.io/cuckoohello/remote-mfi`) | 与 GitHub Actions 集成,公开仓库无速率限制 | 客户端 `docker pull` 无需登录 |
-| 宿主机形态交付 | (无) | v5.3: 仅 **binary + README + LICENSE** tarball,**不含** systemd unit / udev rules / install.sh | 各发行版差异大,统一模板反而添乱 | Runbook §3.4 给出参考 systemd unit,但由用户自建 |
+| 宿主机形态交付 | (无) | v5.3: 仅 **binary + 中英文 README + LICENSE** tarball,**不含** systemd unit / udev rules / install.sh | 各发行版差异大,统一模板反而添乱 | Runbook §3.4 给出参考 systemd unit,但由用户自建 |
+| glibc builder | `golang:1.23-bullseye` / glibc ≥ 2.31 | `golang:1.23-bookworm` / glibc ≥ 2.36 | `v0.1.0` Release 的 amd64/arm64 glibc jobs 同时失败；musl 与 Docker jobs 成功，故将 glibc 构建基线切到仍受支持的 Debian 12 | `v0.1.1` 起 glibc binary 要求 Debian 12 / Ubuntu 24.04 或同等新系统 |
 
 ---
 
@@ -501,7 +502,7 @@ docker exec -it remote-mfi sh -c 'ls /dev/bus/usb/*/'
 ### 9.2 抓一次完整交易 (debug 日志)
 ```sh
 docker stop remote-mfi
-docker run --rm -it -e MFI_LOG_LEVEL=debug ... ghcr.io/cuckoohello/remote-mfi:v0.1.0
+docker run --rm -it -e MFI_LOG_LEVEL=debug ... ghcr.io/cuckoohello/remote-mfi:v0.1.1
 # 触发一次客户端 sign, 观察 event=chip_tx / chip_rx
 ```
 
