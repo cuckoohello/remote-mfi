@@ -193,7 +193,7 @@ jobs:
           tmp=$(mktemp -d)
           for url in \
             "http://old-releases.ubuntu.com/ubuntu/pool/main/m/mpfr4/libmpfr4_3.1.6-1_i386.deb" \
-            "http://old-releases.ubuntu.com/ubuntu/pool/main/m/mpclib3/libmpc3_1.1.0-1_i386.deb" \
+            "http://old-releases.ubuntu.com/ubuntu/pool/main/m/mpclib3/libmpc3_1.0.3-2_i386.deb" \
           ; do
             curl -fsSL -o "$tmp/$(basename "$url")" "$url"
             (cd "$tmp" && dpkg-deb -x "$(basename "$url")" extracted && \
