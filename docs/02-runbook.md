@@ -86,7 +86,7 @@ docker logs --tail 100 remote-mfi-for-xcertplay
 
 ## 宿主机二进制
 
-用 `uname -m` 和 `ldd --version` 确认 CPU/libc。glibc 产物基于 Ubuntu 22.04，要求 glibc ≥ 2.35；musl 产物基于 Alpine 3.20，不承诺更旧版本兼容。若目标机器 glibc 版本较旧（例如 Asuswrt-Merlin 388.x 使用 Buildroot glibc 2.26），使用专门的 `linux_arm64_merlin` 产物；它由官方 [am-toolchains](https://github.com/RMerl/am-toolchains) 的 aarch64 glibc 2.26 交叉工具链构建，动态链接固件自带的 `libusb-1.0.so.0`。安装 `libusb-1.0` 与时区依赖的方法见 [README](../README.zh-CN.md#快速开始)。
+用 `uname -m` 和 `ldd --version` 确认 CPU/libc。glibc 产物基于 Ubuntu 22.04，要求 glibc ≥ 2.35；musl 产物基于 Alpine 3.20，不承诺更旧版本兼容。若目标机器 glibc 版本较旧（例如 Asuswrt-Merlin 388.x 使用 Buildroot glibc 2.26），使用专门的 `linux_arm_merlin` 产物；虽然 RT-AX86U 等机型内核是 aarch64，但用户空间是 armv7l。该产物由官方 [am-toolchains](https://github.com/RMerl/am-toolchains) 的 armv7 glibc 2.26 交叉工具链构建，动态链接固件自带的 `libusb-1.0.so.0`。安装 `libusb-1.0` 与时区依赖的方法见 [README](../README.zh-CN.md#快速开始)。
 
 以下以 `amd64/glibc` 为例，替换版本和平台后下载：
 
@@ -152,7 +152,7 @@ sudo journalctl -u remote-mfi-for-xcertplay -f
 mkdir -p /jffs/opt/remote-mfi
 cd /jffs/opt/remote-mfi
 VERSION=v0.2.0
-ARCHIVE="remote-mfi-for-xcertplay_${VERSION}_linux_arm64_merlin.tar.gz"
+ARCHIVE="remote-mfi-for-xcertplay_${VERSION}_linux_arm_merlin.tar.gz"
 RELEASE_URL="https://github.com/cuckoohello/remote-mfi-for-xcertplay/releases/download/${VERSION}"
 curl -fLO "${RELEASE_URL}/${ARCHIVE}"
 curl -fLO "${RELEASE_URL}/${ARCHIVE}.sha256"

@@ -120,7 +120,7 @@ jobs:
             libc: musl
             runner: ubuntu-22.04-arm
             image: golang:1.23-alpine3.20
-          - arch: arm64
+          - arch: arm
             libc: merlin
             runner: ubuntu-22.04
     steps:
@@ -171,7 +171,7 @@ jobs:
           TARGET_LIBC: ${{ matrix.libc }}
           VERSION: ${{ github.ref_name }}
           COMMIT: ${{ github.sha }}
-          TOOLCHAIN_SUBDIR: brcm-arm-hnd/crosstools-aarch64-gcc-5.5-linux-4.1-glibc-2.26-binutils-2.28.1
+          TOOLCHAIN_SUBDIR: brcm-arm-hnd/crosstools-arm-gcc-5.5-linux-4.1-glibc-2.26-binutils-2.28.1
         run: |
           set -euo pipefail
           sudo apt-get update
@@ -215,21 +215,22 @@ jobs:
           # Report the shared library dependencies of cc1 so unexpected
           # missing SONAMEs surface loudly instead of causing a `make build`
           # trailing failure.
-          cc1_bin="${TC}/libexec/gcc/aarch64-buildroot-linux-gnu/5.5.0/cc1"
+          cc1_bin="${TC}/libexec/gcc/arm-buildroot-linux-gnueabi/5.5.0/cc1"
           file "$cc1_bin"
           if ! LD_LIBRARY_PATH="$LD_LIBRARY_PATH" ldd "$cc1_bin"; then
             echo "cc1 ldd failed; check the trailing errors above" >&2
             exit 1
           fi
-          "${TC}/bin/aarch64-buildroot-linux-gnu-gcc" --version | head -1
-          export CC="${TC}/bin/aarch64-buildroot-linux-gnu-gcc"
-          export CXX="${TC}/bin/aarch64-buildroot-linux-gnu-g++"
-          export AR="${TC}/bin/aarch64-buildroot-linux-gnu-ar"
+          "${TC}/bin/arm-buildroot-linux-gnueabi-gcc" --version | head -1
+          export CC="${TC}/bin/arm-buildroot-linux-gnueabi-gcc"
+          export CXX="${TC}/bin/arm-buildroot-linux-gnueabi-g++"
+          export AR="${TC}/bin/arm-buildroot-linux-gnueabi-ar"
           export GOOS=linux
-          export GOARCH=arm64
+          export GOARCH=arm
+          export GOARM=7
           export CGO_ENABLED=1
           # Cross-build libusb 1.0.24 (matches Merlin 388.x firmware) so cgo
-          # has an aarch64 -lusb-1.0 that only depends on libc + libpthread
+          # has an armv7 -lusb-1.0 that only depends on libc + libpthread
           # (no libudev, no glibc 2.34+ symbols). The runtime SONAME
           # libusb-1.0.so.0 is supplied by the router itself.
           LIBUSB_PREFIX=/opt/libusb-merlin
@@ -241,7 +242,7 @@ jobs:
             (
               cd /tmp/libusb-src
               ./configure \
-                --host=aarch64-buildroot-linux-gnu \
+                --host=arm-buildroot-linux-gnueabi \
                 --prefix="$LIBUSB_PREFIX" \
                 --disable-udev --disable-static
               make -j"$(nproc)"
@@ -254,14 +255,14 @@ jobs:
           make build OUTPUT="dist/linux_${TARGET_ARCH}_${TARGET_LIBC}/remote-mfi-for-xcertplay"
           # Confirm the binary needs no GLIBC symbol newer than 2.26.
           OUT="dist/linux_${TARGET_ARCH}_${TARGET_LIBC}/remote-mfi-for-xcertplay"
-          "${TC}/bin/aarch64-buildroot-linux-gnu-objdump" -T "${OUT}" > /tmp/dt.txt
+          "${TC}/bin/arm-buildroot-linux-gnueabi-objdump" -T "${OUT}" > /tmp/dt.txt
           awk '{print $5}' /tmp/dt.txt | grep -E '^GLIBC_[0-9]+\.[0-9]+' | sort -u > /tmp/glibc-refs.txt || true
           echo "GLIBC symbol references:"
           cat /tmp/glibc-refs.txt
           awk -F. '{ if ($1 != "GLIBC_2" || $2+0 > 26) { print $0; exit 1 } }' /tmp/glibc-refs.txt
           # Confirm we do NOT link against libresolv.so.2, which Merlin firmware
           # does not ship. netgo build tag keeps net/ off the cgo resolver path.
-          "${TC}/bin/aarch64-buildroot-linux-gnu-readelf" -d "${OUT}" > /tmp/dyn.txt
+          "${TC}/bin/arm-buildroot-linux-gnueabi-readelf" -d "${OUT}" > /tmp/dyn.txt
           if grep -F 'libresolv.so.2' /tmp/dyn.txt; then
             echo "unexpected dependency on libresolv.so.2" >&2
             exit 1
@@ -333,8 +334,9 @@ jobs:
 
             - `linux_amd64_glibc`, `linux_arm64_glibc` — glibc ≥ 2.35 (Ubuntu 22.04 baseline).
             - `linux_amd64_musl`, `linux_arm64_musl` — Alpine 3.20 baseline.
-            - `linux_arm64_merlin` — cross-built with the official
-              Asuswrt-Merlin `am-toolchains` aarch64 crosstools (glibc 2.26).
-              Runs on RT-AX86U 388.x and other Merlin HND 5.02L routers;
+            - `linux_arm_merlin` — cross-built with the official
+              Asuswrt-Merlin `am-toolchains` armv7 crosstools (glibc 2.26).
+              Runs on RT-AX86U 388.x and other Merlin HND 5.02L routers
+              (the kernel is aarch64 but the userspace is armv7l);
               dynamically links against the firmware-provided
               `libusb-1.0.so.0`.
