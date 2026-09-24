@@ -183,7 +183,7 @@ jobs:
           # ships libmpc.so.6 only.
           sudo apt-get install -y --no-install-recommends libusb-1.0-0-dev pkg-config
           curl -fsSL -o /tmp/libmpc3.deb \
-            "http://archive.ubuntu.com/ubuntu/pool/universe/m/mpclib3/libmpc3_1.1.0-1_amd64.deb"
+            "http://archive.ubuntu.com/ubuntu/pool/main/m/mpclib3/libmpc3_1.1.0-1_amd64.deb"
           sudo dpkg -i /tmp/libmpc3.deb
           # Sparse-clone the Asuswrt-Merlin aarch64 crosstools that match the
           # firmware's Buildroot glibc 2.26 (HND 5.02L, kernel 4.1).
