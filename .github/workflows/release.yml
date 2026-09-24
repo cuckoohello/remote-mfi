@@ -182,7 +182,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libusb-1.0-0-dev pkg-config curl \
-            libc6:i386 zlib1g:i386
+            libc6:i386 zlib1g:i386 libgmp10:i386
           # The Buildroot 2017 host tools in am-toolchains are 32-bit ELF
           # binaries that link against old SONAMEs (libmpc.so.3, libmpfr.so.4)
           # that jammy no longer ships. Pull the matching bionic .debs from
