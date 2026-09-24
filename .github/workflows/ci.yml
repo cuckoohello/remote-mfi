@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Go test, race, vet
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache: true
+
+      - name: Install libusb headers
+        run: sudo apt-get update && sudo apt-get install -y libusb-1.0-0-dev pkg-config
+
+      - name: Verify formatting
+        run: |
+          test -z "$(gofmt -l ./cmd ./internal)"
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Unit tests
+        run: go test -coverprofile=coverage.out ./...
+
+      - name: Race detector
+        run: go test -race ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: |
+          CGO_ENABLED=1 go build -trimpath \
+            -ldflags="-s -w \
+              -X github.com/cuckoohello/remote-mfi/internal/ver.Version=ci \
+              -X github.com/cuckoohello/remote-mfi/internal/ver.Commit=${GITHUB_SHA} \
+              -X github.com/cuckoohello/remote-mfi/internal/ver.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o remote-mfi ./cmd/remote-mfi
+          ./remote-mfi --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+
+  docker:
+    name: Docker multi-arch build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          build-args: |
+            VERSION=ci
+            COMMIT=${{ github.sha }}
+            BUILD_DATE=1970-01-01T00:00:00Z
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

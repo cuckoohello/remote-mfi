@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="3">
+  <meta name="color-scheme" content="light dark">
+  <title>remote-mfi status</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f5f7f8;
+      --surface: #ffffff;
+      --text: #182027;
+      --muted: #66727b;
+      --line: #d8dee3;
+      --ready: #16794a;
+      --ready-bg: #e7f5ed;
+      --missing: #a15c00;
+      --missing-bg: #fff1d6;
+      --error: #b42318;
+      --error-bg: #feeceb;
+      --candidate: #eef4ff;
+      --accent: #2458a6;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14181b;
+        --surface: #1d2327;
+        --text: #edf1f3;
+        --muted: #a8b2b9;
+        --line: #39434a;
+        --ready: #63d69c;
+        --ready-bg: #173829;
+        --missing: #ffbd66;
+        --missing-bg: #3c2e16;
+        --error: #ff8b82;
+        --error-bg: #43211f;
+        --candidate: #1e304c;
+        --accent: #8eb8ff;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.45 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header, section {
+      border-bottom: 1px solid var(--line);
+    }
+    header {
+      background: var(--surface);
+      padding: 20px clamp(16px, 4vw, 48px);
+    }
+    .inner { max-width: 1180px; margin: 0 auto; }
+    .heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    h1 { margin: 0; font-size: 20px; letter-spacing: 0; font-weight: 680; }
+    h2 { margin: 0 0 14px; font-size: 15px; letter-spacing: 0; }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 32px;
+      padding: 5px 10px;
+      border: 1px solid currentColor;
+      border-radius: 4px;
+      font-weight: 700;
+    }
+    .status::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+    .ready { color: var(--ready); background: var(--ready-bg); }
+    .missing { color: var(--missing); background: var(--missing-bg); }
+    .error { color: var(--error); background: var(--error-bg); }
+    .meta { color: var(--muted); margin-top: 8px; display: flex; gap: 18px; flex-wrap: wrap; }
+    section { padding: 20px clamp(16px, 4vw, 48px); }
+    .runtime {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1px;
+      background: var(--line);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .metric { background: var(--surface); padding: 14px; min-height: 74px; }
+    .metric dt { color: var(--muted); font-size: 12px; }
+    .metric dd { margin: 6px 0 0; font: 600 17px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
+    table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+    th, td { padding: 9px 11px; text-align: left; border-bottom: 1px solid var(--line); }
+    th { color: var(--muted); font-size: 12px; font-weight: 600; background: var(--bg); }
+    tr:last-child td { border-bottom: 0; }
+    tr.candidate { background: var(--candidate); }
+    code { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--accent); }
+    .empty { color: var(--muted); text-align: center; padding: 22px; }
+    .reason { color: var(--error); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+    .note { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    @media (max-width: 680px) {
+      .runtime { grid-template-columns: 1fr; }
+      th, td { padding: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="inner">
+      <div class="heading">
+        <h1>remote-mfi</h1>
+        <span class="status {{.Chip.Status}}">{{.Chip.Status}}</span>
+      </div>
+      <div class="meta">
+        <span>USB {{if .Chip.VIDPID}}<code>{{.Chip.VIDPID}}</code>{{else}}not connected{{end}}</span>
+        <span>Uptime {{.Uptime.Seconds}}s</span>
+        <span>{{.CurrentTime}}</span>
+      </div>
+      {{if .Chip.Reason}}<p class="reason">{{.Chip.Reason}}</p>{{end}}
+    </div>
+  </header>
+
+  <section>
+    <div class="inner">
+      <h2>Runtime</h2>
+      <dl class="runtime">
+        <div class="metric">
+          <dt>Chip lock</dt>
+          <dd>{{if .Runtime.LockHolder}}{{.Runtime.LockHolder}}{{else}}idle{{end}}</dd>
+        </div>
+        <div class="metric">
+          <dt>Lock held</dt>
+          <dd>{{.Runtime.LockHeldMS}} ms</dd>
+        </div>
+        <div class="metric">
+          <dt>Idempotency cache</dt>
+          <dd>{{.Runtime.CacheEntries}}</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <section>
+    <div class="inner">
+      <h2>USB devices</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Bus</th><th>Device</th><th>VID:PID</th><th>Manufacturer</th><th>Product</th><th>Speed</th><th>Class</th></tr>
+          </thead>
+          <tbody>
+            {{range .USBDevices}}
+            <tr class="{{if .Candidate}}candidate{{end}}">
+              <td>{{.Bus}}</td>
+              <td>{{.Device}}</td>
+              <td><code>{{.Vendor}}:{{.ProductID}}</code>{{if .Candidate}} · CANDIDATE CH341{{end}}</td>
+              <td>{{.Manufacturer}}</td>
+              <td>{{.Product}}</td>
+              <td>{{.Speed}}</td>
+              <td>{{.Class}}</td>
+            </tr>
+            {{else}}
+            <tr><td class="empty" colspan="7">no USB devices enumerated</td></tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="inner">
+      <h2>Recent requests</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Time</th><th>Method</th><th>Path</th><th>Status</th><th>ms</th><th>Note</th></tr>
+          </thead>
+          <tbody>
+            {{range .RecentRequests}}
+            <tr>
+              <td><code>{{.Time}}</code></td>
+              <td>{{.Method}}</td>
+              <td><code>{{.Path}}</code></td>
+              <td>{{.Status}}</td>
+              <td>{{.Millis}}</td>
+              <td class="note">{{.Note}}</td>
+            </tr>
+            {{else}}
+            <tr><td class="empty" colspan="6">no business requests recorded</td></tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</body>
+</html>

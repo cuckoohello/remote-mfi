@@ -21,7 +21,7 @@
                           │ 调用 biz 接口, 完全不感知芯片细节
 ┌─────────────────────────▼──────────────────────────────────────┐
 │  Layer 3: biz (业务逻辑, chipService)                            │
-│  - chipMutex (sync.Mutex, waitDeadline 8s)                     │
+│  - chipGate (buffered channel, waitDeadline 8s)                │
 │  - cacheStore (sync.RWMutex, 60s TTL, requestId 幂等)           │
 │  - 双重检查锁模式                                                │
 │  - 决定何时触发 chip 层                                          │
@@ -60,34 +60,20 @@ remote-mfi/
 │   ├── config/
 │   │   └── config.go          # 环境变量解析 + 校验
 │   ├── httpapi/
-│   │   ├── router.go          # net/http mux + middleware chain
-│   │   ├── auth.go            # Bearer token middleware (常量时间比较)
+│   │   ├── server.go          # net/http mux + auth/observe middleware
+│   │   ├── handlers.go        # 5 个 endpoint + 错误映射
 │   │   ├── recent.go          # Recent Requests 环形缓冲 (recentMutex)
-│   │   ├── errors.go          # {"detail":"..."} 统一响应
-│   │   ├── handler_certificate.go
-│   │   ├── handler_sign.go
-│   │   ├── handler_reset.go   # no-op, 仅日志
-│   │   ├── handler_debug.go   # HTML/JSON 内容协商, 401 引导页
-│   │   ├── handler_healthz.go # 无鉴权 3 态
 │   │   └── templates/         # go:embed 静态模板
 │   │       ├── debug.html.tmpl
 │   │       └── unauthorized.html.tmpl
 │   ├── biz/
-│   │   ├── service.go         # chipService: 对外暴露 Certificate/Sign/Reset
-│   │   ├── cache.go           # requestId → signature 幂等缓存 (cacheMutex)
-│   │   ├── lock.go            # chipMutex + waitDeadline 语义
-│   │   └── health.go          # chip.status 计算 (基于 transport 的 Enumerate/Handle 状态)
+│   │   └── service.go         # 串行 gate + 幂等 cache + Certificate/Sign/Reset/Health
 │   ├── chip/
-│   │   ├── driver.go          # MFi 寄存器序列 (protocolMajor/certificate/signChallenge)
-│   │   └── registers.go       # 常量表 (0x02 等), 与文档 01-req#3.1 对齐
+│   │   └── driver.go          # MFi 寄存器常量与完整时序
 │   ├── transport/
 │   │   ├── transport.go       # I2cTransport 接口定义
-│   │   ├── ch341.go           # gousb 实现: stream encoder + bulk R/W
-│   │   ├── ch341_encoder.go   # I2C stream 编码 (对应 xcertplay Ch341I2cStreamEncoder.kt)
-│   │   └── fake.go            # 测试用 fakeTransport
-│   ├── obs/
-│   │   ├── log.go             # slog JSON 单行, 固定字段
-│   │   └── uptime.go          # 启动时间戳, 供 /debug/usb 用
+│   │   ├── ch341.go           # gousb USB 会话 + bulk R/W
+│   │   └── ch341_encoder.go   # I2C stream 编码 (对应 xcertplay Kotlin 参考)
 │   └── ver/
 │       └── ver.go             # 编译期注入的 version / commit / buildDate
 ├── docs/                      # 本文档族
@@ -101,7 +87,8 @@ remote-mfi/
 
 **几个关键约束**:
 - `internal/` 保证包不被外部 import,清晰的对内契约边界
-- 每层的**接口**定义在该层自己的包里,**实现**也在该层;上层通过接口消费,不 import 具体类型
+- 接口由**消费方**定义: `biz.ChipDriver` 由 biz 定义、`httpapi.Service` 由 httpapi 定义；`chip.Driver` / `biz.Service` 保持具体类型。这符合 Go 的小接口惯例
+- 测试 fake 与测试放在同包 `_test.go`,不把仅测试使用的实现带进生产 binary
 - `cmd/remote-mfi/main.go` **纯 wire-up**,零业务逻辑;有些人主张再拆一个 `app.go`,我认为对本项目规模是过度设计
 - **不建 `pkg/` 目录**:这个项目的所有代码都是"服务内部",没有可复用到外部的公共库
 
@@ -130,12 +117,12 @@ type I2cTransport interface {
 }
 ```
 
-### 3.2 `chip.Driver`
+### 3.2 `biz.ChipDriver` (消费方接口)
 
 ```go
-package chip
+package biz
 
-type Driver interface {
+type ChipDriver interface {
     // ProtocolMajor 读寄存器 0x02
     ProtocolMajor(ctx context.Context) (uint8, error)
 
@@ -154,38 +141,37 @@ type Driver interface {
 }
 ```
 
-### 3.3 `biz.ChipService`
+具体类型 `chip.Driver` 实现该接口。接口由消费方 `biz` 定义，避免底层包为了上层测试暴露抽象。
+
+### 3.3 `biz.Service` 与 `httpapi.Service`
 
 ```go
-package biz
+package httpapi
 
-type ChipService interface {
+type Service interface {
     // Certificate 每次调用现读芯片 (v5 决策: 服务端不缓存)
-    Certificate(ctx context.Context) (protocolMajor uint8, certificate []byte, err error)
+    Certificate(ctx context.Context) (biz.Certificate, error)
 
     // Sign 走完整幂等流程:
     //   1. cacheMutex.RLock -> lookup(requestId) -> unlock
     //   2. 命中 & challenge 一致 -> return signature, note=idempotent-hit
     //   3. 命中 & challenge 不一致 -> return ErrRequestIdReuse
-    //   4. chipMutex.LockWithDeadline(8s) -> 超时 return ErrChipBusy
+    //   4. chipGate.Acquire(8s) -> 超时 return ErrChipBusy
     //   5. 双重检查缓存
     //   6. driver.SignChallenge
-    //   7. 写 cache, 释放 chipMutex
-    Sign(ctx context.Context, requestId string, challenge []byte) (signature []byte, cached bool, err error)
+    //   7. 写 cache, 释放 chipGate
+    Sign(ctx context.Context, requestID string, challenge []byte) (biz.SignResult, error)
 
     // Reset v5.1 no-op: 仅记日志, 什么都不清
     Reset(ctx context.Context) error
 
-    // Health 供 handler_healthz / handler_debug 共用
-    Health(ctx context.Context) HealthStatus
-}
-
-type HealthStatus struct {
-    Chip    string // "ready" / "missing" / "error"
-    Reason  string // 空或人类可读原因
-    VidPid  string // "1a86:5512", ready 时才有意义
+    Health() biz.HealthStatus
+    Diagnostics() biz.HealthStatus
+    Runtime() biz.RuntimeStatus
 }
 ```
+
+具体类型 `biz.Service` 实现该接口。`Health()` 只枚举 USB descriptors，供高频 `/healthz` 使用；`Diagnostics()` 才读取 Manufacturer/Product 字符串，供低频诊断页使用。
 
 ### 3.4 sentinel errors(错误层级)
 
@@ -195,9 +181,9 @@ package biz
 var (
     ErrChipBusy         = errors.New("chip busy, retry")               // -> 503
     ErrChipMissing      = errors.New("chip missing")                   // -> 503
-    ErrRequestIdReuse   = errors.New("requestId reuse with different challenge") // -> 400
+    ErrRequestIDReuse   = errors.New("requestId reuse with different challenge") // -> 400
     ErrChallengeSize    = errors.New("challenge must be 1..128 bytes") // -> 400
-    ErrRequestIdFormat  = errors.New("requestId must be a UUID")       // -> 400
+    ErrRequestIDFormat  = errors.New("requestId must be a UUID")       // -> 400
 )
 ```
 
@@ -247,7 +233,7 @@ HTTP handler 用 `errors.Is` 判定,不 sniff error 字符串。**内部错误(c
 
 **不起额外后台线程**: 无 `libusb hotplug callback` 独立 goroutine — hotplug 检测只在 handler 或 healthz 里同步做一次 enumerate,不引入订阅式复杂度。
 
-### 5.2 chipMutex 的 `LockWithDeadline` 实现要点
+### 5.2 chipGate 的 `Acquire` 实现要点
 
 Go 的 `sync.Mutex` 没有带 deadline 的 `TryLock`。实现思路(不落代码,只讲设计):
 
@@ -294,12 +280,12 @@ main:
   1. config.Load()  ← 解析 & 校验环境变量; 任何缺失/非法直接 fatal exit
   2. transport.NewCh341(cfg)  ← 只做参数校验, 不立即 open USB
   3. chip.NewDriver(transport, i2cAddr)
-  4. biz.NewChipService(driver, cfg)
-  5. srv := httpapi.NewServer(service, cfg)
-  6. probe (best-effort): 尝试读一次 protocolMajor, 打 info/warn 日志; 失败不 exit
-  7. go handleSignal(srv)   ← SIGTERM/SIGINT
-  8. go cacheGC(service)    ← 15s 遍历清 TTL
-  9. srv.ListenAndServe()   ← 阻塞
+  4. biz.NewService(driver, transport)
+  5. handler := httpapi.NewHandler(service, cfg)
+  6. go srv.ListenAndServe() ← 先监听,保证 HTTP accept ≤ 2s
+  7. go probe (best-effort)  ← 异步读 protocolMajor;失败不 exit、不阻塞端口
+  8. go cacheGC(service)     ← 15s 遍历清 TTL
+  9. signal.NotifyContext 等待 SIGTERM/SIGINT 或 server error
  10. 收到 signal → srv.Shutdown(ctx=10s)  → 等 in-flight handler 完成 → transport.Close()
 ```
 
@@ -333,9 +319,8 @@ CH341 USB handle 需要独占持有 → 服务启动后一直持有到 process �
 ```
 
 - **I/O error 触发 handle 释放**: 只要遇到 `LIBUSB_ERROR_NO_DEVICE` / `LIBUSB_ERROR_IO`,立即 `handle.Close()` 并置 nil,让下次 lazy re-open 重建。
-- **handle mutex**: `handleMutex` 保护 `handle *gousb.Device` 的读写,与 chipMutex 独立;但**顺序上** chipMutex 外层,handleMutex 内层(嵌套持有仅在 transport 内部允许,不跨层)。
-
-⚠️ 这条特例更新了 [01-req §5.5 锁层级契约](./01-requirements.md#55-锁层级契约v52-新增) 隐含的"三锁不嵌套"表述——严格说 transport 内部有一把额外的 `handleMutex`,它仅存在于 chipMutex 临界区内。**这是 v5.3 遗漏的补充**,记入 [06-open-questions.md](./06-open-questions.md#o1-锁层级契约的-transport-例外)。
+- **transport 锁**: `ioMu` 串行整个 CH341 configure/write/read transaction；`sessionMu` 只保护 `*gousb.Device` handle 的打开、失效和关闭。
+- **固定顺序**: `chipGate → transport.ioMu → transport.sessionMu`。transport 不反向申请 biz/httpapi 锁；完整契约见 [01-req §5.5](./01-requirements.md#55-锁层级契约v52-新增)。
 
 ---
 
@@ -358,7 +343,7 @@ CH341 USB handle 需要独占持有 → 服务启动后一直持有到 process �
 
 ## 9. 构建 & 发布流水线概览
 
-**不落 CI yaml,只讲设计**。真正的 workflow 文件在第三轮再落。
+CI 已落在 `.github/workflows/ci.yml` 与 `.github/workflows/release.yml`，下图是其稳定结构:
 
 ```
 GitHub Actions (workflow: release.yml, 由 tag v* 触发)
@@ -381,8 +366,8 @@ GitHub Actions (workflow: release.yml, 由 tag v* 触发)
 - `go vet ./...`
 - `go test -race ./...`
 - `go build` 单架构(冒烟)
-- `golangci-lint run`
-- 可选: markdown lint(检查 docs/ 链接有效性)
+- `gofmt -l` 必须无输出
+- Docker buildx `linux/amd64,linux/arm64` 构建冒烟
 
 **签名策略**(暂缓,记入开放问题):
 - cosign 对镜像签名?

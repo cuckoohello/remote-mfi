@@ -120,7 +120,7 @@
 - [ ] H2. 镜像 rootfs 不含 `.git / go.mod / *.go / node_modules`
 - [ ] H3. 容器以非 root 用户 `mfi` 运行 (`docker exec ... id`)
 - [ ] H4. HEALTHCHECK 生效 (`docker inspect` 显示 `Healthcheck` 段)
-- [ ] H5. `-v /dev/bus/usb:/dev/bus/usb` 挂载后,容器内 `ls /dev/bus/usb/*/` 能看到 CH341
+- [ ] H5. 使用 `-v /dev/bus/usb:/dev/bus/usb` + `--device-cgroup-rule='c 189:* rmw'` + 宿主 `plugdev` 数字 GID 后,容器内能枚举并 claim CH341
 - [ ] H6. 拔掉 CH341 → 容器**不 exit** (启动 probe 失败不 exit 的合约)
 - [ ] H7. 重插 CH341 → 无需重启容器,下一次请求自动恢复
 - [ ] H8. 未设 `MFI_BEARER_TOKEN` 时,启动日志有 1 行 WARN `authentication disabled`

@@ -15,41 +15,22 @@
 
 ---
 
-## O.1 [🔵 架构] 锁层级契约的 transport 例外
+## 已解决
 
-**背景**: [01-req §5.5](./01-requirements.md#55-锁层级契约v52-新增) 说"三锁不嵌套持有";但 [03-arch §7](./03-architecture.md#7-usb-会话--handle-生命周期) 里 transport 内部实际有第 4 把锁 `handleMutex`(保护 `handle *gousb.Device` 的 nil 检查与重建),它**嵌套在 chipMutex 内部**。
+### R.1 锁层级契约的 transport 例外
 
-**问题**:
-- 是不是应把契约表述改成"3+1"?
-- 还是把 handleMutex 藏到 transport 内部抽象里,对外声明"transport 是线程安全的",不暴露锁的存在?
+**结论(实现阶段)**: 明确采用单向顺序:
 
-**触发**: 落代码时会明确 `Ch341Transport` 里到底怎么组织并发保护;届时决定契约的最终表述。
+```
+chipGate → cacheMutex
+chipGate → transport.ioMu → transport.sessionMu
+```
 
-**候选方案**:
-- A. 契约里明确"transport 内部可有内部锁,不算作全局锁层级的一部分"
-- B. transport 内部改用 `atomic.Pointer[Device]` + CAS 重建,消除 handleMutex
+`recentMutex` 不与任何锁嵌套；transport 不反向申请上层锁。已同步到 [01-req §5.5](./01-requirements.md#55-锁层级契约v52-新增)。
 
-**默认倾向**: A(简单直白);B 更"极简"但 CAS 重建流程需要设计确保没有短暂无 handle 的窗口。
+### R.2 Sign 请求的 ctx 传播
 
----
-
-## O.2 [🔵 架构] Sign 请求的 ctx 传播
-
-**背景**: HTTP 请求有 `r.Context()`,客户端断开 / read timeout 会 Cancel。当前设计里 `biz.Sign(ctx, ...)` 会在等 chipMutex 时 `select case <-ctx.Done()`。**但拿到锁后**:
-- 若中途 ctx 取消, 我们要**中断 chip 层的寄存器序列**吗?
-- 还是**跑完再检查 ctx**?
-
-**风险面**:
-- 中断: MFi 芯片可能停在半状态(challenge 已写, 0x10 未触发),下次 sign 会读到 stale 0x11。**必须**先 reset 芯片状态才安全。
-- 不中断: 客户端已断,服务器还占着芯片跑几百 ms,加剧队列。
-
-**触发**: 落代码前必须定, 因为直接影响 `chip.Driver` 的接口签名(是否传 ctx / 是否 abort)。
-
-**候选方案**:
-- A. **不中断**: 拿到 chipMutex 后 ctx-cancel 只在下次 sign 前生效; sign 一旦启动跑到底(<= 3s)
-- B. **中断 + best-effort recovery**: 每个寄存器操作检查 ctx.Done(), 若取消则尝试再写 0x10 = 0 复位芯片
-
-**默认倾向**: A — 拿到锁之后 sign 一定跑完;3s 最坏情况下客户端已经断开但服务端行为可预测。
+**结论(实现阶段)**: 等 `chipGate` 时遵循 `r.Context()`；一旦拿到锁，用 `context.WithoutCancel` 跑完整个芯片序列。客户端中断不能让硬件停在 challenge 已写但响应未读的半状态。
 
 ---
 
@@ -186,8 +167,6 @@
 
 | # | 类别 | 触发条件 | 预估工作量 |
 | --- | --- | --- | --- |
-| O.1 | 架构 | 落代码时 | S — 一次决策 |
-| O.2 | 架构 | 落代码前 | S — 一次决策 + 加接口参数 |
 | O.3 | 供应链 | v1.0 GA / 用户要求 | M — CI 改动 |
 | O.4 | 运维 | 首次生产 hang | M — 新 handler + 端口 |
 | O.5 | 产品 | 单芯片顶不住 | L — 架构重构 |
@@ -204,7 +183,7 @@
 **任何决策若不能立即做**,追加到本文档而不是塞进 [01-req](./01-requirements.md) / [02-api](./02-api-contract.md) 制造混乱。
 
 **任何本文档中的问题一旦决策**:
-1. 移除本文档条目
+1. 从 Open Questions 移到顶部“已解决”区，压缩为结论与依据
 2. 在对应文档更新决策
 3. 变更矩阵 [04-runbook §5](./04-runbook.md#5-变更矩阵) 追加一行
 4. 验收清单 [05-acceptance](./05-acceptance-checklist.md) 追加对应回归项

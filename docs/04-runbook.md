@@ -71,7 +71,7 @@ sudo udevadm trigger --subsystem-match=usb
 | CH341 常见 VID | `1a86` | 沁恒官方 |
 | CH341 常见 PID | `5512` (I2C mode);`5523` 见于部分改板 | 参考 [Ch341DeviceMatcher.kt](https://github.com/shilapi/xcertplay/blob/3ac55e3/shared/src/main/java/com/shilapi/xcertplay/transport/Ch341DeviceMatcher.kt) 明确 "no built-in VID/PID" — **必须实测** |
 | MFi 芯片 I2C 7-bit 地址 | `0x11` (默认,拉高 CH341 RST 后选中) | [Ch341I2cTransport.kt#L88-L108](https://github.com/shilapi/xcertplay/blob/3ac55e3/shared/src/main/java/com/shilapi/xcertplay/transport/Ch341I2cTransport.kt#L88-L108) 注释 |
-| Docker 挂载路径 | `/dev/bus/usb`(整体) 或 `/dev/bus/usb/<BBB>/<DDD>` (精确) | libusb 唯一入口 |
+| Docker USB 权限 | `-v /dev/bus/usb:/dev/bus/usb` + `--device-cgroup-rule='c 189:* rmw'` + 宿主 `plugdev` 数字 GID | libusb 入口 + Docker device cgroup + 文件权限三者都必须满足 |
 | 容器监听端口 | `8080` (默认) | 见 `MFI_HTTP_ADDR` |
 | chipMutex 等锁超时 | 8s (硬编码) | 见 [02-api-contract.md](./02-api-contract.md#幂等并发背压总结-v5) |
 | 幂等缓存 TTL | 60s (硬编码) | 覆盖客户端 2 次重试的时间窗口 |
@@ -204,6 +204,8 @@ cd dist/linux_amd64_glibc && \
 ### 3.1 Docker · 基础版 (推荐, 生产)
 
 ```sh
+USB_GID="$(getent group plugdev | cut -d: -f3)"
+
 docker run -d \
   --name remote-mfi \
   --restart unless-stopped \
@@ -211,8 +213,9 @@ docker run -d \
   -e MFI_BEARER_TOKEN='REPLACE_ME_LONG_RANDOM_STRING' \
   -e MFI_CH341_USB_IDS='1a86:5512' \
   -e MFI_LOG_LEVEL='info' \
+  --device-cgroup-rule='c 189:* rmw' \
   -v /dev/bus/usb:/dev/bus/usb \
-  --group-add plugdev \
+  --group-add "$USB_GID" \
   ghcr.io/cuckoohello/remote-mfi:v0.1.0
 ```
 
@@ -226,12 +229,15 @@ Bus 001 Device 007: ID 1a86:5512 QinHeng Electronics ...
 
 然后:
 ```sh
+USB_GID="$(getent group plugdev | cut -d: -f3)"
+
 docker run -d \
   --name remote-mfi \
   --restart unless-stopped \
   -p 8080:8080 \
   -e MFI_BEARER_TOKEN='REPLACE_ME_LONG_RANDOM_STRING' \
   --device=/dev/bus/usb/001/007 \
+  --group-add "$USB_GID" \
   ghcr.io/cuckoohello/remote-mfi:v0.1.0
 ```
 
@@ -240,10 +246,13 @@ docker run -d \
 ### 3.3 Docker · 无鉴权版 (仅内网 loopback 使用, 明确风险)
 
 ```sh
+USB_GID="$(getent group plugdev | cut -d: -f3)"
+
 docker run -d --name remote-mfi \
   -p 127.0.0.1:8080:8080 \      # 仅 loopback
+  --device-cgroup-rule='c 189:* rmw' \
   -v /dev/bus/usb:/dev/bus/usb \
-  --group-add plugdev \
+  --group-add "$USB_GID" \
   ghcr.io/cuckoohello/remote-mfi:v0.1.0
 # MFI_BEARER_TOKEN 未设 → 启动日志会 WARN 一行 "authentication disabled"
 ```
@@ -492,7 +501,7 @@ docker exec -it remote-mfi sh -c 'ls /dev/bus/usb/*/'
 ### 9.2 抓一次完整交易 (debug 日志)
 ```sh
 docker stop remote-mfi
-docker run --rm -it -e MFI_LOG_LEVEL=debug ... remote-mfi:0.1.0
+docker run --rm -it -e MFI_LOG_LEVEL=debug ... ghcr.io/cuckoohello/remote-mfi:v0.1.0
 # 触发一次客户端 sign, 观察 event=chip_tx / chip_rx
 ```
 

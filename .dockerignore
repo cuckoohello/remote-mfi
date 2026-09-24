@@ -1,0 +1,7 @@
+.git
+.github
+dist
+remote-mfi
+*.test
+*.out
+.DS_Store

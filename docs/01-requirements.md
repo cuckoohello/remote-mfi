@@ -160,28 +160,39 @@ MFi 协处理器是**共享有状态资源**,并行两次 signChallenge 会破�
 
 ### 5.5 锁层级契约(v5.2 新增)
 
-服务内共 3 把锁,**严禁两两嵌套持有**(避免死锁 / 优先级反转):
+实现包含业务层 3 把锁和 transport 内部 2 把锁。为避免死锁/优先级反转，必须遵循**单向锁顺序**:
 
 | 锁 | 保护对象 | 临界区特征 | 允许持有时间 |
 | --- | --- | --- | --- |
-| `chipMutex` (`sync.Mutex`) | MFi 芯片 I2C 事务 | 长(可达 200ms 级) | 一次完整芯片操作 |
+| `chipGate` (buffered channel) | MFi 芯片 I2C 事务 | 长(最坏 3s 级) | 一次完整芯片操作 |
 | `cacheMutex` (`sync.RWMutex`) | requestId → signature 幂等 map | 极短(map lookup / insert) | ≤ 微秒级 |
 | `recentMutex` (`sync.Mutex`) | Recent Requests 环形缓冲 | 极短(数组切片赋值) | ≤ 微秒级 |
+| `transport.ioMu` (`sync.Mutex`) | CH341 stream configure/write/read 整体 | 一次 I2C transaction | transaction 完成 |
+| `transport.sessionMu` (`sync.Mutex`) | libusb handle 的打开/失效/关闭 | 极短;首次 claim 除外 | handle 操作完成 |
 
-**顺序规则**(handler goroutine 视角):
+**唯一允许的嵌套方向**:
+
+```
+chipGate → cacheMutex
+chipGate → transport.ioMu → transport.sessionMu
+```
+
+**handler 顺序**:
 ```
 handler
   ├─ 拿 cacheMutex (RLock) → 查缓存 → 释放
-  ├─ 拿 chipMutex (Lock, deadline=8s) → 拿 cacheMutex 二次检查(短暂持有) → 释放 cacheMutex
-  │    → 执行 I2C 事务 → 拿 cacheMutex 写入(短暂持有) → 释放 cacheMutex → 释放 chipMutex
+  ├─ 拿 chipGate (deadline=8s) → 拿 cacheMutex 二次检查(短暂持有) → 释放 cacheMutex
+  │    → 执行 I2C 事务(transport 内部按 ioMu → sessionMu) → 拿 cacheMutex 写入 → 释放 → 释放 chipGate
   └─ 拿 recentMutex → 追加一条 → 释放
 ```
 
 **明确禁止**:
-- ❌ 持有 `chipMutex` 时拿 `recentMutex`(反过来也不行)
+- ❌ 持有 `cacheMutex` / `recentMutex` 时再申请 `chipGate`
+- ❌ 持有 `chipGate` 时拿 `recentMutex`
 - ❌ 持有 `cacheMutex` 时做 I2C(会长时间阻塞其他 handler 查缓存)
-- ❌ 任何锁临界区里做网络 / 文件 IO
-- ❌ 任何锁临界区里持有 goroutine channel 等待
+- ❌ transport 反向调用 biz/httpapi 或申请上层锁
+- ❌ `cacheMutex` / `recentMutex` 临界区里做网络 / USB / 文件 IO
+- ❌ `cacheMutex` / `recentMutex` 临界区里等待 goroutine channel
 
 **验证方法**: `-race` build + F 组并发压测,任何 data race 直接判 fail。
 
