@@ -146,7 +146,7 @@ sudo journalctl -u remote-mfi-for-xcertplay -f
 
 ## Asuswrt-Merlin 路由器
 
-以 RT-AX86U (`arm64`, Buildroot glibc 2.26, `/usr/lib/libusb-1.0.so.0` 已随固件提供) 为例。根分区只读，只有 `/jffs` 可持久化：
+以 RT-AX86U (HND 5.02L：内核 aarch64，用户空间 armv7l，Buildroot glibc 2.26，`/usr/lib/libusb-1.0.so.0` 已随固件提供) 为例。根分区只读，只有 `/jffs` 可持久化：
 
 ```sh
 mkdir -p /jffs/opt/remote-mfi
@@ -165,15 +165,87 @@ tar xzf "$ARCHIVE"
 ldd ./remote-mfi-for-xcertplay | grep libusb-1.0.so.0
 ```
 
-前台运行验证；无 systemd 时可用 Merlin 内置的 `/jffs/scripts/services-start` 自启（不在此赘述）：
+Merlin 上通常以 `admin` (uid 0) 运行，无需额外 udev 规则；路由器内核已导出 `/dev/bus/usb/*`。Merlin 固件不含 `Asia/Shanghai` 的 zoneinfo，需要显式 `TZ=UTC`（或将时区文件放入 `/jffs/zoneinfo` 并 `TZ=:/jffs/zoneinfo/Asia/Shanghai`）。
+
+### 常驻脚本
+
+Merlin 没有 systemd。用 `/jffs/scripts/services-start` 作为开机钩子，`cru` 做保活兜底；服务进程 `nohup` 到后台，日志追加到 `/jffs/opt/remote-mfi/logs/service.log`。先在 Web UI `Administration → System → Enable JFFS custom scripts and configs = Yes`，否则钩子不执行。
+
+`/jffs/opt/remote-mfi/env`（token 一次性生成，`chmod 600`，避免落 shell 历史）：
 
 ```sh
-export MFI_BEARER_TOKEN='替换为足够长的随机字符串'
-export TZ=Asia/Shanghai
-./remote-mfi-for-xcertplay
+umask 077
+cat >/jffs/opt/remote-mfi/env <<EOF
+export TZ=UTC
+export MFI_BEARER_TOKEN=$(openssl rand -hex 32)
+export MFI_CH341_USB_IDS=1a86:5512
+export MFI_LOG_LEVEL=info
+export MFI_LOG_FORMAT=json
+EOF
+chmod 600 /jffs/opt/remote-mfi/env
 ```
 
-Merlin 上通常以 `admin` (uid 0) 运行，无需额外 udev 规则；路由器内核已导出 `/dev/bus/usb/*`。
+`/jffs/opt/remote-mfi/run.sh`（`chmod +x`）：
+
+```sh
+#!/bin/sh
+BASE=/jffs/opt/remote-mfi
+BIN=$BASE/remote-mfi-for-xcertplay
+PIDFILE=$BASE/run.pid
+LOG=$BASE/logs/service.log
+mkdir -p "$BASE/logs"
+
+is_alive() { [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
+
+case "$1" in
+  start)
+    is_alive && exit 0
+    . "$BASE/env"
+    nohup "$BIN" >>"$LOG" 2>&1 &
+    echo $! >"$PIDFILE"
+    ;;
+  stop)
+    is_alive && kill "$(cat "$PIDFILE")" 2>/dev/null
+    rm -f "$PIDFILE"
+    ;;
+  status)
+    is_alive && echo "running $(cat "$PIDFILE")" || { echo stopped; exit 1; }
+    ;;
+  restart) "$0" stop; sleep 1; "$0" start ;;
+  *) echo "usage: $0 {start|stop|status|restart}" >&2; exit 2 ;;
+esac
+```
+
+`/jffs/scripts/services-start`（追加两行，脚本已存在时勿覆盖）：
+
+```sh
+#!/bin/sh
+/jffs/opt/remote-mfi/run.sh start
+cru a remote_mfi '*/1 * * * * /jffs/opt/remote-mfi/run.sh start'
+```
+
+`/jffs/scripts/services-stop` 追加：
+
+```sh
+#!/bin/sh
+cru d remote_mfi
+/jffs/opt/remote-mfi/run.sh stop
+```
+
+`chmod +x` 两个 `services-*` 脚本；首次不重启也可以 `sh /jffs/scripts/services-start` 手动触发。重启路由器后自动拉起，异常退出后一分钟内被 `cru` 恢复；`run.sh start` 内建 pid 存活检测，重复调用幂等。
+
+### 验证
+
+```sh
+/jffs/opt/remote-mfi/run.sh status
+BASE_URL=http://127.0.0.1:8080
+. /jffs/opt/remote-mfi/env
+curl -fsS "$BASE_URL/healthz"
+curl -fsS -H "Authorization: Bearer $MFI_BEARER_TOKEN" \
+  -H 'Accept: application/json' "$BASE_URL/debug/usb" | head -c 400
+```
+
+浏览器打开 `http://<router>:8080/debug/usb?token=<token>`，token 从 `/jffs/opt/remote-mfi/env` 里取。
 
 ## 验证与诊断
 
