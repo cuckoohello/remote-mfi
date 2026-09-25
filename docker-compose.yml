@@ -4,21 +4,21 @@ services:
     container_name: remote-mfi-for-xcertplay
     restart: unless-stopped
     ports:
-      - "8080:8080"
-    environment:
-      MFI_BEARER_TOKEN: "${MFI_BEARER_TOKEN:?set MFI_BEARER_TOKEN in .env}"
-      MFI_CH341_USB_IDS: "${MFI_CH341_USB_IDS:-1a86:5512}"
-      MFI_MFI_I2C_ADDRESS: "${MFI_MFI_I2C_ADDRESS:-0x11}"
-      MFI_CH341_I2C_SPEED_KHZ: "${MFI_CH341_I2C_SPEED_KHZ:-100}"
-      MFI_LOG_LEVEL: "${MFI_LOG_LEVEL:-info}"
-      MFI_LOG_FORMAT: "${MFI_LOG_FORMAT:-json}"
-      TZ: "${TZ:-Asia/Shanghai}"
+      - "${MFI_HTTP_PORT:-8972}:${MFI_HTTP_PORT:-8972}"
+    command:
+      - "--http-addr=:${MFI_HTTP_PORT:-8972}"
+      - "--bearer-token=${MFI_BEARER_TOKEN:?set MFI_BEARER_TOKEN in .env}"
+      - "--usb-ids=${MFI_CH341_USB_IDS:-1a86:5512}"
+      - "--i2c-address=${MFI_MFI_I2C_ADDRESS:-0x11}"
+      - "--i2c-speed-khz=${MFI_CH341_I2C_SPEED_KHZ:-100}"
+      - "--log-level=${MFI_LOG_LEVEL:-info}"
+      - "--log-format=${MFI_LOG_FORMAT:-json}"
     volumes:
       - /dev/bus/usb:/dev/bus/usb
     device_cgroup_rules:
       - "c 189:* rmw"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/healthz | grep -q '\"ok\":true'"]
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:${MFI_HTTP_PORT:-8972}/healthz | grep -q '\"ok\":true'"]
       interval: 10s
       timeout: 3s
       start_period: 5s

@@ -9,6 +9,7 @@
 ```sh
 make check
 make build
+./remote-mfi-for-xcertplay --help
 ./remote-mfi-for-xcertplay --version
 ```
 
@@ -16,14 +17,16 @@ make build
 
 | 覆盖范围 | 测试位置 |
 | --- | --- |
-| 配置默认值、覆盖与非法值 | [config_test.go](../internal/config/config_test.go) |
+| flags 默认值、覆盖、帮助、环境隔离与非法值 | [config_test.go](../internal/config/config_test.go) |
 | HTTP 流程、鉴权、参数校验、reset、health 与最近请求 | [handlers_test.go](../internal/httpapi/handlers_test.go)、[recent_test.go](../internal/httpapi/recent_test.go) |
 | 同 ID 去重、不同 ID 串行、reset 保留缓存、证书进程内缓存、错误不缓存、等锁期限 | [service_test.go](../internal/biz/service_test.go) |
 | 证书窗口、签名寄存器顺序、完整 select/read 重试 | [driver_test.go](../internal/chip/driver_test.go) |
 | CH341 编码、分段、最终 NACK、非法参数及错误分类 | [ch341_encoder_test.go](../internal/transport/ch341_encoder_test.go) |
 
 - [ ] `make check` 全部通过，无 race/vet 报告。
+- [ ] `--help` 和 `-h` 列出全部 flags 及默认值，不初始化 USB；未知 flag 和多余位置参数返回失败。
 - [ ] `--version` 与构建时传入的版本、commit、日期一致。
+- [ ] 各配置 flag 可独立覆盖默认值；设置旧 `MFI_*` 环境变量不会改变程序配置。
 - [ ] CI 中 amd64/arm64 的 Docker 和 glibc 构建通过。
 
 下面的完整验收还包含现有测试未覆盖的场景。错误注入、精确计数及时间控制使用测试替身或专用测试程序；普通 HTTP 访问日志不能证明某个寄存器只写过一次。
@@ -52,7 +55,7 @@ make build
 - [ ] 页面每 3 秒刷新，展示候选 USB、状态、uptime、锁持有者、持锁时长及缓存条目数；无设备时有明确提示。
 - [ ] 发出 25 次业务请求后只保留最近完成的 20 条；刷新 debug/health 不挤占列表。
 - [ ] `note` 能区分芯片调用、幂等命中、noop 和各类错误；最近请求时间是收录时刻，耗时包含等锁。
-- [ ] 显式 `TZ=Asia/Shanghai` 时日志和页面为 `+08:00`；`TZ=UTC` 时为 UTC（`Z` 或 `+00:00`）。
+- [ ] 日志和诊断页时间均采用目标系统本地时区，未出现应用内硬编码时区。
 - [ ] 默认 JSON 日志可解析，请求日志为 `msg=http_request`，含 `request_id/status/duration_ms/chip_wait_ms/chip_duration_ms/note`；正常请求不记录 token 或 body。
 - [ ] health 的 HTTP 状态为 200，通过 `ok` 区分健康；分别验证 `ready/missing/error`，忙碌度由 `runtime` 表达。
 
@@ -63,8 +66,9 @@ make build
 证书检查示例（需要 curl 和 Python 3）：
 
 ```sh
-BASE_URL=http://127.0.0.1:8080
-curl -fsS -H "Authorization: Bearer $MFI_BEARER_TOKEN" \
+BASE_URL=http://127.0.0.1:8972
+TOKEN='部署时配置的 token'
+curl -fsS -H "Authorization: Bearer $TOKEN" \
   "$BASE_URL/mfi/certificate" > certificate.json
 python3 -c 'import base64,hashlib,json; d=json.load(open("certificate.json")); c=base64.b64decode(d["certificate"],validate=True); assert d["type"]=="mfi" and 1<=len(c)<=65525; assert hashlib.sha256(c).hexdigest()==d["certificateSha256"]; print("certificate hash OK")'
 ```
@@ -72,7 +76,7 @@ python3 -c 'import base64,hashlib,json; d=json.load(open("certificate.json")); c
 签名编码检查可使用固定样例；该样例不能代替真实 CarPlay 认证：
 
 ```sh
-curl -fsS -H "Authorization: Bearer $MFI_BEARER_TOKEN" \
+curl -fsS -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"challenge":"AQIDBA==","requestId":"9c5b2f14-3a4d-4f6e-8b12-84cbe9a7c0d1"}' \
   "$BASE_URL/mfi/sign"

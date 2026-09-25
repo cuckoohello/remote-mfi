@@ -1,23 +1,23 @@
 package config
 
 import (
+	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 )
 
 const (
-	defaultHTTPAddr      = ":8080"
+	defaultHTTPAddr      = ":8972"
 	defaultUSBIDs        = "1a86:5512"
 	defaultI2CAddress    = "0x11"
 	defaultI2CSpeedKHz   = 100
 	defaultLogLevel      = "info"
 	defaultLogFormat     = "json"
-	defaultTimezone      = "Asia/Shanghai"
 	defaultRecentEntries = 20
 )
 
@@ -42,61 +42,88 @@ type Config struct {
 	RecentCapacity int
 }
 
-func Load() (Config, error) {
-	httpAddr := envOrDefault("MFI_HTTP_ADDR", defaultHTTPAddr)
+// Parse parses command-line flags into the runtime configuration.
+func Parse(args []string, output io.Writer) (Config, bool, error) {
+	if output == nil {
+		output = io.Discard
+	}
+
+	flags := flag.NewFlagSet("remote-mfi-for-xcertplay", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+
+	var (
+		httpAddr    string
+		bearerToken string
+		usbIDList   string
+		i2cAddress  string
+		speed       int
+		logLevel    string
+		logFormat   string
+		showVersion bool
+	)
+	flags.StringVar(&httpAddr, "http-addr", defaultHTTPAddr, "HTTP listen address")
+	flags.StringVar(&bearerToken, "bearer-token", "", "Bearer token; empty disables authentication")
+	flags.StringVar(&usbIDList, "usb-ids", defaultUSBIDs, "comma-separated CH341 USB IDs as vid:pid")
+	flags.StringVar(&i2cAddress, "i2c-address", defaultI2CAddress, "MFi 7-bit I2C address")
+	flags.IntVar(&speed, "i2c-speed-khz", defaultI2CSpeedKHz, "CH341 I2C speed: 20, 100, 400, or 750")
+	flags.StringVar(&logLevel, "log-level", defaultLogLevel, "log level: debug, info, warn, or error")
+	flags.StringVar(&logFormat, "log-format", defaultLogFormat, "log format: json or text")
+	flags.BoolVar(&showVersion, "version", false, "print version and exit")
+	flags.Usage = func() {
+		fmt.Fprintf(output, "Usage: %s [options]\n\nOptions:\n", flags.Name())
+		flags.SetOutput(output)
+		flags.PrintDefaults()
+		flags.SetOutput(io.Discard)
+	}
+
+	if err := flags.Parse(args); err != nil {
+		return Config{}, false, err
+	}
+	if flags.NArg() != 0 {
+		return Config{}, false, fmt.Errorf("unexpected positional arguments: %s", strings.Join(flags.Args(), " "))
+	}
+	if showVersion {
+		return Config{}, true, nil
+	}
+
 	if _, _, err := net.SplitHostPort(httpAddr); err != nil {
-		return Config{}, fmt.Errorf("MFI_HTTP_ADDR: %w", err)
+		return Config{}, false, fmt.Errorf("--http-addr: %w", err)
 	}
 
-	usbIDs, err := parseUSBIDs(envOrDefault("MFI_CH341_USB_IDS", defaultUSBIDs))
+	usbIDs, err := parseUSBIDs(usbIDList)
 	if err != nil {
-		return Config{}, fmt.Errorf("MFI_CH341_USB_IDS: %w", err)
+		return Config{}, false, fmt.Errorf("--usb-ids: %w", err)
 	}
 
-	i2cAddress, err := parseInteger(envOrDefault("MFI_MFI_I2C_ADDRESS", defaultI2CAddress), 7)
+	parsedI2CAddress, err := parseInteger(i2cAddress, 7)
 	if err != nil {
-		return Config{}, fmt.Errorf("MFI_MFI_I2C_ADDRESS: %w", err)
+		return Config{}, false, fmt.Errorf("--i2c-address: %w", err)
 	}
 
-	speed, err := strconv.Atoi(envOrDefault("MFI_CH341_I2C_SPEED_KHZ", strconv.Itoa(defaultI2CSpeedKHz)))
-	if err != nil || !validSpeed(speed) {
-		return Config{}, fmt.Errorf("MFI_CH341_I2C_SPEED_KHZ must be one of 20, 100, 400, 750")
+	if !validSpeed(speed) {
+		return Config{}, false, fmt.Errorf("--i2c-speed-khz must be one of 20, 100, 400, 750")
 	}
 
-	logLevel, err := parseLogLevel(envOrDefault("MFI_LOG_LEVEL", defaultLogLevel))
+	parsedLogLevel, err := parseLogLevel(logLevel)
 	if err != nil {
-		return Config{}, err
+		return Config{}, false, fmt.Errorf("--log-level: %w", err)
 	}
-	logFormat := strings.ToLower(envOrDefault("MFI_LOG_FORMAT", defaultLogFormat))
+	logFormat = strings.ToLower(logFormat)
 	if logFormat != "json" && logFormat != "text" {
-		return Config{}, fmt.Errorf("MFI_LOG_FORMAT must be json or text")
-	}
-
-	timezone := envOrDefault("TZ", defaultTimezone)
-	location, err := time.LoadLocation(timezone)
-	if err != nil {
-		return Config{}, fmt.Errorf("TZ %q: %w", timezone, err)
+		return Config{}, false, fmt.Errorf("--log-format must be json or text")
 	}
 
 	return Config{
 		HTTPAddr:       httpAddr,
-		BearerToken:    os.Getenv("MFI_BEARER_TOKEN"),
+		BearerToken:    bearerToken,
 		USBIDs:         usbIDs,
-		I2CAddress:     uint8(i2cAddress),
+		I2CAddress:     uint8(parsedI2CAddress),
 		I2CSpeedKHz:    speed,
-		LogLevel:       logLevel,
+		LogLevel:       parsedLogLevel,
 		LogFormat:      logFormat,
-		Location:       location,
+		Location:       time.Local,
 		RecentCapacity: defaultRecentEntries,
-	}, nil
-}
-
-func envOrDefault(name, fallback string) string {
-	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" {
-		return fallback
-	}
-	return value
+	}, false, nil
 }
 
 func parseUSBIDs(value string) ([]USBID, error) {
@@ -148,7 +175,7 @@ func parseLogLevel(value string) (slog.Level, error) {
 	case "error":
 		return slog.LevelError, nil
 	default:
-		return 0, fmt.Errorf("MFI_LOG_LEVEL must be debug, info, warn, or error")
+		return 0, fmt.Errorf("must be debug, info, warn, or error")
 	}
 }
 

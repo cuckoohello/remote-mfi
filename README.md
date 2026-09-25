@@ -26,16 +26,15 @@ sudo apk add libusb tzdata
 Start the extracted binary:
 
 ```sh
-export MFI_BEARER_TOKEN='replace-with-a-long-random-token'
-export TZ=Asia/Shanghai
-./remote-mfi-for-xcertplay
+./remote-mfi-for-xcertplay \
+  --bearer-token='replace-with-a-long-random-token'
 ```
 
-If the USB identity differs, set `MFI_CH341_USB_IDS` to the observed VID:PID. For an ordinary user, configure device permissions as described in the [runbook](docs/02-runbook.md#usb-权限). Host root normally needs no udev permission rule.
+If the USB identity differs, pass the observed VID:PID with `--usb-ids`. Run `./remote-mfi-for-xcertplay --help` for all options. The program uses flags and built-in defaults only; it does not read application configuration from environment variables. For an ordinary user, configure device permissions as described in the [runbook](docs/02-runbook.md#usb-权限). Host root normally needs no udev permission rule.
 
 For Docker, use `ghcr.io/cuckoohello/remote-mfi-for-xcertplay:<release-tag>` and follow the [Docker instructions](docs/02-runbook.md#docker). The image runs as container root, so you only need `-v /dev/bus/usb:/dev/bus/usb` plus `--device-cgroup-rule='c 189:* rmw'`.
 
-The default HTTP address is `:8080`. Set `MFI_HTTP_ADDR=127.0.0.1:8080` for local access only. `MFI_BEARER_TOKEN` is optional; omitting it disables authentication on business and diagnostic endpoints. Use an isolated network or loopback in that mode. HTTPS requires an external proxy.
+The default HTTP address is `:8972`; pass `--http-addr=127.0.0.1:8972` for local access only. `--bearer-token` is optional; omitting it disables authentication on business and diagnostic endpoints. Use an isolated network or loopback in that mode. Diagnostic timestamps use the system local timezone. HTTPS requires an external proxy.
 
 ## API
 
@@ -47,7 +46,7 @@ The default HTTP address is `:8080`. Set `MFI_HTTP_ADDR=127.0.0.1:8080` for loca
 | `GET` | `/debug/usb` | USB and request diagnostics, HTML or JSON |
 | `GET` | `/healthz` | Unauthenticated USB/session status; inspect the JSON `ok` field |
 
-Set the xcertplay Remote MFi base URL to `http://HOST:8080` and use the same token. Open `http://HOST:8080/debug/usb?token=TOKEN` for diagnostics. A `ready` health response does not verify MFi signing.
+Set the xcertplay Remote MFi base URL to `http://HOST:8972` and use the same token. Open `http://HOST:8972/debug/usb?token=TOKEN` for diagnostics. A `ready` health response does not verify MFi signing.
 
 ## Development
 
@@ -56,6 +55,7 @@ Install Go 1.23+, Make, a C toolchain, `pkg-config`, and libusb development head
 ```sh
 make check
 make build
+./remote-mfi-for-xcertplay --help
 ./remote-mfi-for-xcertplay --version
 ```
 

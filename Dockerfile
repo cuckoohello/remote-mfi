@@ -39,9 +39,9 @@ RUN apk add --no-cache \
 
 COPY --from=build /out/remote-mfi-for-xcertplay /usr/local/bin/remote-mfi-for-xcertplay
 
-EXPOSE 8080
+EXPOSE 8972
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget -q -O- http://127.0.0.1:8080/healthz | grep -q '"ok":true' || exit 1
+  CMD wget -q -O- http://127.0.0.1:8972/healthz | grep -q '"ok":true' || exit 1
 
 ENTRYPOINT ["/usr/local/bin/remote-mfi-for-xcertplay"]

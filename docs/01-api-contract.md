@@ -6,7 +6,7 @@
 
 - `/mfi/*` 使用扁平、单行 JSON，响应类型为 `application/json; charset=utf-8`，避免嵌套同名字段影响客户端解析。
 - POST 请求发送 `Content-Type: application/json`；body 上限 64 KiB，只允许一个 JSON 值，sign 拒绝未知字段。
-- 设置 `MFI_BEARER_TOKEN` 后，业务接口及 `/debug/usb` 要求 `Authorization: Bearer <token>`；留空关闭鉴权。`/healthz` 始终无需鉴权。
+- 传入非空 `--bearer-token` 后，业务接口及 `/debug/usb` 要求 `Authorization: Bearer <token>`；留空关闭鉴权。`/healthz` 始终无需鉴权。
 - 客户端响应体上限为 2 MiB；证书和签名解码后长度为 `1..65525` 字节。
 - 下述接口的 JSON 错误响应为 `{"detail":"非空错误原因"}`。诊断页 HTML 鉴权失败例外；错误方法返回 405 并设置 `Allow`。
 
@@ -75,7 +75,7 @@ body 必须是空 JSON 对象 `{}`。成功返回 200：
 | `runtime` | `cacheEntries`、`lockHolder`（空闲为 null）、`lockHeldMs` |
 | `recentRequests` | 最近 20 条已完成的业务请求，最新收录的在前 |
 
-每条最近请求含 `time/method/path/status/ms/note`。`time` 为完成后收录时刻，采用配置时区；`ms` 为总处理耗时。列表只记录三个 `/mfi/*` 端点，重启清空。
+每条最近请求含 `time/method/path/status/ms/note`。`time` 为完成后收录时刻，采用系统本地时区；`ms` 为总处理耗时。列表只记录三个 `/mfi/*` 端点，重启清空。
 
 `note` 为 `chip`、`idempotent-hit`、`noop`、`chip busy`、`unauthorized`、`bad request` 或 `error`。`/mfi/certificate` 缓存命中和 `/mfi/sign` 幂等命中都记为 `idempotent-hit`。最近请求列表不包含 requestId、请求 body、IP 或 token；`runtime.lockHolder` 在签名期间可能显示 requestId。
 

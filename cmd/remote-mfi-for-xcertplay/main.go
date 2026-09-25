@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -22,21 +23,25 @@ import (
 const shutdownTimeout = 10 * time.Second
 
 func main() {
-	if len(os.Args) == 2 && os.Args[1] == "--version" {
+	cfg, showVersion, err := config.Parse(os.Args[1:], os.Stdout)
+	if errors.Is(err, flag.ErrHelp) {
+		return
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "remote-mfi-for-xcertplay: %v\n", err)
+		os.Exit(2)
+	}
+	if showVersion {
 		fmt.Printf("remote-mfi-for-xcertplay %s (commit=%s built=%s)\n", ver.Version, ver.Commit, ver.BuildDate)
 		return
 	}
-	if err := run(); err != nil {
+	if err := run(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "remote-mfi-for-xcertplay: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
-	cfg, err := config.Load()
-	if err != nil {
-		return fmt.Errorf("load configuration: %w", err)
-	}
+func run(cfg config.Config) error {
 	logger := newLogger(cfg)
 	slog.SetDefault(logger)
 	if cfg.BearerToken == "" {
