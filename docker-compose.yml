@@ -1,0 +1,25 @@
+services:
+  remote-mfi-for-xcertplay:
+    image: ghcr.io/cuckoohello/remote-mfi-for-xcertplay:latest
+    container_name: remote-mfi-for-xcertplay
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      MFI_BEARER_TOKEN: "${MFI_BEARER_TOKEN:?set MFI_BEARER_TOKEN in .env}"
+      MFI_CH341_USB_IDS: "${MFI_CH341_USB_IDS:-1a86:5512}"
+      MFI_MFI_I2C_ADDRESS: "${MFI_MFI_I2C_ADDRESS:-0x11}"
+      MFI_CH341_I2C_SPEED_KHZ: "${MFI_CH341_I2C_SPEED_KHZ:-100}"
+      MFI_LOG_LEVEL: "${MFI_LOG_LEVEL:-info}"
+      MFI_LOG_FORMAT: "${MFI_LOG_FORMAT:-json}"
+      TZ: "${TZ:-Asia/Shanghai}"
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb
+    device_cgroup_rules:
+      - "c 189:* rmw"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/healthz | grep -q '\"ok\":true'"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
